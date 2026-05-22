@@ -49,6 +49,13 @@ export interface Message {
   createdAt: string;
 }
 
+export interface InternalUser {
+  id: string;
+  name: string;
+  email: string;
+  role: "admin" | "engineering" | "operations" | "support";
+}
+
 export interface SuggestedResolution {
   id: string;
   similarityScore: number;
@@ -74,6 +81,7 @@ export interface TicketDetail extends Ticket {
   suggestedResolutions: SuggestedResolution[];
   botConversation: BotConversation | null;
   resolutionSummary: string | null;
+  assignedTo: string | null;
 }
 
 export interface Ticket {

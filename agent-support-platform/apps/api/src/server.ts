@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import { webhookRouter } from "./routes/webhooks";
 import { ticketRouter } from "./routes/tickets";
 import { agentRouter } from "./routes/agents";
+import { userRouter } from "./routes/users";
 import { prisma } from "./services/database";
 import { initRealtime } from "./services/realtime";
 
@@ -36,6 +37,7 @@ app.get("/health", async (_req, res) => {
 app.use("/webhooks", webhookRouter);
 app.use("/api/tickets", ticketRouter);
 app.use("/api/agents", agentRouter);
+app.use("/api/users", userRouter);
 
 // ─── Start ──────────────────────────────────────────────────
 

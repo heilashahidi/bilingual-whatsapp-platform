@@ -1,4 +1,13 @@
-import type { Message, TicketDetail, TicketListResponse } from "./types";
+import type {
+  InternalUser,
+  Message,
+  Severity,
+  Ticket,
+  TicketCategory,
+  TicketDetail,
+  TicketListResponse,
+  TicketStatus,
+} from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -46,4 +55,51 @@ export async function sendResponse(
     throw new Error(body || `Failed to send response: ${res.status}`);
   }
   return res.json();
+}
+
+export interface TicketPatch {
+  status?: TicketStatus;
+  severity?: Severity;
+  category?: TicketCategory;
+  assignedTo?: string | null;
+  tags?: string[];
+}
+
+export async function updateTicket(
+  ticketId: string,
+  patch: TicketPatch
+): Promise<Ticket> {
+  const res = await fetch(`${API_URL}/api/tickets/${ticketId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `Failed to update ticket: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function resolveTicket(
+  ticketId: string,
+  resolutionSummary?: string
+): Promise<Ticket> {
+  const res = await fetch(`${API_URL}/api/tickets/${ticketId}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resolutionSummary }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `Failed to resolve ticket: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchUsers(): Promise<InternalUser[]> {
+  const res = await fetch(`${API_URL}/api/users`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`);
+  const data = (await res.json()) as { users: InternalUser[] };
+  return data.users;
 }

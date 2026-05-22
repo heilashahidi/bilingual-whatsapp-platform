@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { fetchTicket } from "@/lib/api";
+import { fetchTicket, fetchUsers } from "@/lib/api";
 import { RealtimeRefresh } from "@/lib/realtime-refresh";
 import type { Message, Severity, TicketStatus } from "@/lib/types";
 import { ResponseComposer } from "./response-composer";
+import { TicketActions } from "./ticket-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -119,6 +120,7 @@ export default async function TicketDetailPage({
     }
     throw e;
   }
+  const users = await fetchUsers().catch(() => []);
 
   return (
     <div className="space-y-6">
@@ -175,6 +177,8 @@ export default async function TicketDetailPage({
         </div>
 
         <aside className="space-y-4">
+          <TicketActions ticket={ticket} users={users} />
+
           <div className="rounded-lg border border-slate-200 bg-white p-4">
             <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
               Agent
