@@ -1,29 +1,3 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-:root {
-  color-scheme: light;
-}
-
-body {
-  @apply bg-slate-50 text-slate-900;
-}
-
-@keyframes toast-slide-in {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-.toast-enter {
-  animation: toast-slide-in 200ms ease-out;
-}
 /* ─── globals.css ─────────────────────────────────────────────────────
    Append the rules below to:
      apps/dashboard/app/globals.css
