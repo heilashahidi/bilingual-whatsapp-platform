@@ -1,6 +1,7 @@
 import { getClientAuthToken } from "./auth-client";
 import type {
   InternalUser,
+  KnowledgeArticle,
   Message,
   Note,
   Severity,
@@ -156,6 +157,46 @@ export async function createNote(
     throw new Error(body || `Failed to create note: ${res.status}`);
   }
   return res.json();
+}
+
+export async function fetchKnowledgeArticles(
+  params?: { status?: "draft" | "active" | "archived" },
+  token?: string
+): Promise<KnowledgeArticle[]> {
+  const search = new URLSearchParams();
+  if (params?.status) search.set("status", params.status);
+  const res = await fetch(
+    `${API_URL}/api/knowledge${search.toString() ? `?${search}` : ""}`,
+    {
+      headers: await authHeaders(token),
+      cache: "no-store",
+    }
+  );
+  if (!res.ok) throw new Error(`Failed to fetch knowledge: ${res.status}`);
+  const data = (await res.json()) as { articles: KnowledgeArticle[] };
+  return data.articles;
+}
+
+export async function approveKnowledgeArticle(id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/knowledge/${id}/approve`, {
+    method: "POST",
+    headers: await authHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `Approve failed: ${res.status}`);
+  }
+}
+
+export async function archiveKnowledgeArticle(id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/knowledge/${id}/archive`, {
+    method: "POST",
+    headers: await authHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `Archive failed: ${res.status}`);
+  }
 }
 
 export async function fetchUsers(token?: string): Promise<InternalUser[]> {

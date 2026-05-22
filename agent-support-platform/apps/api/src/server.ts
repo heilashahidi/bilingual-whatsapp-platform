@@ -6,6 +6,7 @@ import { webhookRouter } from "./routes/webhooks";
 import { ticketRouter } from "./routes/tickets";
 import { agentRouter } from "./routes/agents";
 import { userRouter } from "./routes/users";
+import { knowledgeRouter } from "./routes/knowledge";
 import { prisma } from "./services/database";
 import { initRealtime } from "./services/realtime";
 import { requireAuth } from "./middleware/auth";
@@ -45,6 +46,7 @@ app.use("/webhooks", webhookRouter);
 app.use("/api/users", userRouter);
 app.use("/api/tickets", requireAuth, ticketRouter);
 app.use("/api/agents", requireAuth, agentRouter);
+app.use("/api/knowledge", requireAuth, knowledgeRouter);
 
 // ─── Start ──────────────────────────────────────────────────
 

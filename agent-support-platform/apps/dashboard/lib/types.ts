@@ -51,6 +51,23 @@ export interface Message {
   readAt: string | null;
 }
 
+export interface KnowledgeArticle {
+  id: string;
+  title: string;
+  problemDescription: string;
+  resolutionText: string;
+  category: TicketCategory | null;
+  productArea: string | null;
+  tags: string[];
+  status: "draft" | "active" | "archived";
+  usageCount: number;
+  successCount: number;
+  failureCount: number;
+  sourceTicketIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Note {
   id: string;
   text: string;

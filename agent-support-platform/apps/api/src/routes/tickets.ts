@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../services/database";
 import { emitTicketEvent } from "../services/realtime";
+import { indexResolvedTicket } from "../services/kb-indexer";
 import { sendAgentResponse } from "../integrations/whatsapp";
 import { requireRole } from "../middleware/auth";
 
@@ -210,10 +211,14 @@ router.post("/:id/resolve", async (req: Request, res: Response) => {
     },
   });
 
-  // TODO: Trigger knowledge base indexer worker
-  // if (resolutionSummary) {
-  //   await queueKBIndexer(ticket.id);
-  // }
+  // Drafts a KnowledgeArticle from this resolved ticket so the team can
+  // approve it for future suggestion. Async-fire-and-log so a slow KB
+  // step doesn't block the response to the dashboard.
+  if (resolutionSummary) {
+    indexResolvedTicket(ticket.id).catch((err) =>
+      console.error("  ✗ KB indexer failed:", err)
+    );
+  }
 
   emitTicketEvent("updated", ticket.id);
 

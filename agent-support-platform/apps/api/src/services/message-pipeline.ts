@@ -1,6 +1,7 @@
 import { RawMessage, EXTENDED_SLA_COUNTRIES, SLA_DEFAULTS } from "@asp/shared";
 import { prisma } from "./database";
 import { emitTicketEvent } from "./realtime";
+import { findSuggestedResolutions } from "./kb-search";
 import { translateMessage } from "../integrations/translation";
 import { classifyMessage } from "../integrations/classification";
 
@@ -184,7 +185,18 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
 
   console.log(`  ✓ Stored message ${message.id} (delivery delay: ${deliveryDelay}s)`);
 
-  // ─── Step 7: Realtime broadcast ────────────────────────────
+  // ─── Step 7: Pin KB suggestions for new tickets ───────────
+  // Only on new tickets — appending a message to an existing one
+  // shouldn't reshuffle existing suggestions.
+  if (shouldCreateNew && classification) {
+    try {
+      await findSuggestedResolutions(ticket!.id, classification);
+    } catch (error) {
+      console.error("  ✗ KB suggestion lookup failed:", error);
+    }
+  }
+
+  // ─── Step 8: Realtime broadcast ────────────────────────────
   emitTicketEvent(shouldCreateNew ? "created" : "message", ticket!.id);
 
   // ─── Step 8: Notify (placeholder) ──────────────────────────

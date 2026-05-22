@@ -29,6 +29,9 @@ export default function RootLayout({
                   <Link href="/tickets" className="hover:text-slate-900">
                     Tickets
                   </Link>
+                  <Link href="/knowledge" className="hover:text-slate-900">
+                    Knowledge
+                  </Link>
                 </nav>
               </div>
               <UserMenu />
