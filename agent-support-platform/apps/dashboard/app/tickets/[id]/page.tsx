@@ -3,8 +3,7 @@ import { notFound } from "next/navigation";
 import { fetchTicket, fetchUsers } from "@/lib/api";
 import { getServerApiToken } from "@/lib/auth-server";
 import { RealtimeRefresh } from "@/lib/realtime-refresh";
-import type { Message, Severity, TicketStatus } from "@/lib/types";
-import { NotesPanel } from "./notes-panel";
+import type { Message, Note, Severity, TicketStatus } from "@/lib/types";
 import { ResponseComposer } from "./response-composer";
 import { TicketActions } from "./ticket-actions";
 import { SlaTimer } from "../_components/sla-timer";
@@ -46,6 +45,20 @@ function formatTime(iso: string): string {
   });
 }
 
+type TimelineItem =
+  | { kind: "message"; data: Message; createdAt: string }
+  | { kind: "note"; data: Note; createdAt: string };
+
+function interleave(messages: Message[], notes: Note[]): TimelineItem[] {
+  const items: TimelineItem[] = [
+    ...messages.map((m) => ({ kind: "message" as const, data: m, createdAt: m.createdAt })),
+    ...notes.map((n) => ({ kind: "note" as const, data: n, createdAt: n.createdAt })),
+  ];
+  return items.sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+}
+
 function senderLabel(m: Message): string {
   if (m.senderType === "agent") return "Agent";
   if (m.senderType === "bot") return "Bot";
@@ -75,6 +88,31 @@ function DeliveryStatus({ message }: { message: Message }) {
     <span className="text-slate-500" title="Sent — awaiting delivery receipt">
       ✓
     </span>
+  );
+}
+
+function NoteBubble({ note }: { note: Note }) {
+  return (
+    <div className="flex justify-center">
+      <div className="w-full max-w-[85%] rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+        <div className="mb-1 flex items-center gap-2 text-xs text-amber-800/80">
+          <span className="rounded bg-amber-200/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
+            internal note
+          </span>
+          <span className="font-medium text-amber-900">
+            {note.author?.name || "Anonymous"}
+          </span>
+          <span>·</span>
+          <span>{formatTime(note.createdAt)}</span>
+          <span className="ml-auto text-[10px] italic text-amber-700">
+            not sent to agent
+          </span>
+        </div>
+        <div className="whitespace-pre-wrap text-sm text-amber-950">
+          {note.text}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -256,17 +294,19 @@ export default async function TicketDetailPage({
               Conversation
             </h2>
             <div className="space-y-3">
-              {ticket.messages.length === 0 ? (
-                <div className="text-sm text-slate-500">No messages yet.</div>
+              {ticket.messages.length === 0 && ticket.notes.length === 0 ? (
+                <div className="text-sm text-slate-500">No activity yet.</div>
               ) : (
-                ticket.messages.map((m) => (
-                  <MessageBubble key={m.id} message={m} />
-                ))
+                interleave(ticket.messages, ticket.notes).map((item) =>
+                  item.kind === "message" ? (
+                    <MessageBubble key={`m-${item.data.id}`} message={item.data} />
+                  ) : (
+                    <NoteBubble key={`n-${item.data.id}`} note={item.data} />
+                  )
+                )
               )}
             </div>
           </div>
-
-          <NotesPanel ticketId={ticket.id} notes={ticket.notes} />
 
           <ResponseComposer ticketId={ticket.id} />
         </div>
