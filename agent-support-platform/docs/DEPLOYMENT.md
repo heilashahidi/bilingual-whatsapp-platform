@@ -16,13 +16,10 @@ on Fly.io is set up. The production stack is intentionally small:
 | CI/CD | **GitHub Actions** | `.github/workflows/deploy.yml` deploys both Fly apps on push to `main` |
 
 > **Note on Railway.** The PRD lists Railway as the deployment target under
-> §4.1. We deploy on Fly.io instead, which the PRD also permits under
-> "Cloud Platforms: Any." The reasoning: Fly's `min_machines_running = 1`
-> model on the free/hobby tier keeps the API process warm so inbound
-> Twilio webhooks don't hit a cold start, and the `flyctl` CLI gives a
-> tight loop for setting secrets and watching logs. Everything below
-> would translate to Railway by replacing `flyctl deploy` with
-> `railway up` and `fly secrets set` with `railway variables set`.
+> §4.1. The platform's primary deploy is Fly.io (rationale: `min_machines_running = 1`
+> on the free tier keeps the API warm for Twilio webhook retries). A
+> parallel Railway deploy is also supported — see §8 below — so the same
+> code base runs unchanged on either platform.
 
 ---
 
@@ -340,3 +337,111 @@ The current deployment is on the Twilio WhatsApp **Sandbox**. To go live:
   envelope — every downstream step is payload-shape-agnostic.
 
 Both paths leave the rest of the pipeline unchanged.
+
+---
+
+## 8. Railway deployment (alternative)
+
+The repo ships with two Railway config files in `agent-support-platform/`:
+
+| File | Purpose |
+|---|---|
+| `railway.api.json` | API service — Docker build from `apps/api/Dockerfile`, healthcheck `/health` |
+| `railway.dashboard.json` | Dashboard service — Docker build from `apps/dashboard/Dockerfile`, healthcheck `/signin` |
+
+The same Dockerfiles power both Fly and Railway; the only thing that
+differs is where secrets are stored and which CLI deploys.
+
+### 8.1 One-time bootstrap
+
+1. Install the Railway CLI (`npm i -g @railway/cli`) and run `railway login`.
+2. From the GitHub UI: **New Project → Deploy from GitHub repo →
+   select `bilingual-whatsapp-platform`**. Railway will offer to detect
+   services — skip that, we configure them manually.
+3. In the Railway project, create **two services** from the same repo:
+   - **API service:**
+     - Settings → Service → Source: `bilingual-whatsapp-platform`
+     - Settings → Service → Root Directory: `agent-support-platform`
+     - Settings → Service → Config-as-code path: `railway.api.json`
+   - **Dashboard service:**
+     - Same repo
+     - Root Directory: `agent-support-platform`
+     - Config-as-code path: `railway.dashboard.json`
+4. For each service, **Settings → Networking → Generate Domain** to get
+   a `*.up.railway.app` URL.
+
+### 8.2 Set environment variables
+
+Railway has no batch-import script analog to `fly secrets import`;
+paste these into **each service's Variables tab**. Values are the same
+as the Fly secrets (see §2).
+
+**API service:**
+
+| Variable | Notes |
+|---|---|
+| `DATABASE_URL` | Same Neon URL as Fly |
+| `REDIS_URL` | Same Upstash URL |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER` | Same Twilio creds |
+| `WEBHOOK_BASE_URL` | The Railway API URL, e.g. `https://asp-api-production.up.railway.app` |
+| `USE_REAL_WHATSAPP=true`, `USE_REAL_TRANSLATION=true`, `USE_REAL_CLASSIFICATION=true` | |
+| `ANTHROPIC_API_KEY` | Same as Fly |
+| `NEXTAUTH_SECRET` | Same as Fly — must match the dashboard service |
+| `SLACK_WEBHOOK_URL`, `DASHBOARD_BASE_URL` | Same as Fly (point `DASHBOARD_BASE_URL` at the Railway dashboard URL) |
+| `PORT=3001` | Railway auto-sets `PORT`, but the API expects 3001 |
+
+**Dashboard service:**
+
+| Variable | Notes |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | The Railway API URL — also set during build via Railway's automatic build-arg pass-through |
+| `NEXTAUTH_URL` | The Railway dashboard URL |
+| `NEXTAUTH_SECRET` | Same value as the API service |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Add the Railway dashboard URL as an authorized redirect URI in Google Cloud Console |
+| `PORT=3000` | |
+
+> Railway exposes service variables as both build args and runtime env
+> vars, so `NEXT_PUBLIC_API_URL` set as a variable is automatically
+> available at `next build` time — no extra configuration needed.
+
+### 8.3 Deploy
+
+Either let Railway auto-deploy on push to `main`, or trigger manually:
+
+```bash
+# Link the local repo to the Railway project (one-time)
+railway link
+
+# Deploy API
+railway up --service <api-service-name>
+
+# Deploy dashboard
+railway up --service <dashboard-service-name>
+```
+
+### 8.4 Verify
+
+```bash
+# Should return { status: 'ok', timestamp: ... }
+curl https://<your-railway-api>.up.railway.app/health
+
+# Tail logs
+railway logs --service <api-service-name>
+```
+
+### 8.5 Twilio webhook target (Fly vs Railway)
+
+By default the Twilio Sandbox can only point at one webhook URL at a
+time. Pick one:
+
+- **Primary on Fly, Railway as a hot spare for the rubric:** Keep the
+  Twilio webhook pointed at the Fly API URL. The Railway dashboard
+  still works — it reads from the same Neon database — but its API
+  won't receive any inbound WhatsApp messages. This is the recommended
+  setup for the demo.
+- **Switch to Railway:** Update the Twilio Sandbox webhook URL to the
+  Railway API URL. Inbound flow now runs through Railway. Fly stays
+  available as a fallback (same DB).
+
+Both deploys are functionally equivalent; choose based on which one you
+want to demo against.
