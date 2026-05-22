@@ -89,9 +89,10 @@ async function translateStub(
 
   console.log(`  [STUB] Translate: "${text.substring(0, 50)}..." (${detectedLanguage} → ${targetLanguage})`);
 
-  // In dev, just pass through the text with a prefix
+  // In dev, just pass through the text untouched. Real translation requires
+  // USE_REAL_TRANSLATION=true + Google Cloud credentials.
   return {
-    translatedText: detectedLanguage === targetLanguage ? text : `[${detectedLanguage}→${targetLanguage}] ${text}`,
+    translatedText: text,
     detectedLanguage,
     confidence: 0.85,
   };

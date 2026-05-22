@@ -73,12 +73,15 @@ export function normalizeInboundMessage(
 /**
  * Derive country from phone number prefix.
  * +509 = Haiti, +1-809/829/849 = DR, +243 = DRC
+ *
+ * For numbers that don't match (e.g., US test numbers during development),
+ * fall back to TEST_AGENT_COUNTRY env var, defaulting to HT. This lets a
+ * developer demo the Twilio sandbox flow from a US phone without crashing
+ * the pipeline on the Country enum.
  */
 function deriveCountryCode(phone: string): string {
   if (phone.startsWith("+509")) return "HT";
   if (phone.startsWith("+243")) return "CD";
-  // DR uses +1 with area codes 809, 829, 849
   if (phone.startsWith("+1809") || phone.startsWith("+1829") || phone.startsWith("+1849")) return "DO";
-  // Fallback — could be a US test number during development
-  return "UNKNOWN";
+  return process.env.TEST_AGENT_COUNTRY || "HT";
 }

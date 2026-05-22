@@ -1,4 +1,6 @@
 import twilio from "twilio";
+import { BOT_MAX_MESSAGE_LENGTH } from "@asp/shared";
+import { translateResponse } from "./translation";
 
 const getClient = () => {
   const accountSid = process.env.TWILIO_ACCOUNT_SID!;
@@ -65,9 +67,6 @@ export async function sendAgentResponse(
   agentLanguage: string,
   agentCountry: string
 ): Promise<{ messageSid: string; translatedText: string }> {
-  const { translateResponse } = await import("./translation");
-  const { BOT_MAX_MESSAGE_LENGTH } = await import("@asp/shared");
-
   // Translate to agent's language
   const translation = await translateResponse(englishText, agentLanguage);
   let translatedText = translation.translatedText;
