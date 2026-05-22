@@ -108,4 +108,14 @@ router.post("/whatsapp/status", async (req: Request, res: Response) => {
   }
 });
 
+// ─── POST /webhooks/slack ───────────────────────────────────
+// Stub for Slack's Interactivity Request URL. Our outbound messages
+// use URL-only buttons (no callbacks) but Slack still requires an
+// Interactivity URL to be configured before it stops warning the user.
+// This endpoint just acknowledges and discards.
+
+router.post("/slack", (_req: Request, res: Response) => {
+  res.status(200).send();
+});
+
 export { router as webhookRouter };
