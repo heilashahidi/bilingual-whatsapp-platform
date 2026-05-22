@@ -25,6 +25,7 @@ export interface ActiveFilters {
   severities: Set<Severity>;
   countries: Set<Country>;
   assigneeId: string | "me" | "unassigned" | null;
+  incidentId: string | null;
   search: string;
 }
 
@@ -39,6 +40,7 @@ export function readFiltersFromParams(
       (params.get("country")?.split(",").filter(Boolean) as Country[]) || []
     ),
     assigneeId: (params.get("assignee") as ActiveFilters["assigneeId"]) || null,
+    incidentId: params.get("incident") || null,
     search: params.get("q") || "",
   };
 }

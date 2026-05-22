@@ -156,3 +156,22 @@ export interface TicketListResponse {
   tickets: Ticket[];
   total: number;
 }
+
+export type IncidentStatus = "detected" | "confirmed" | "mitigating" | "resolved";
+
+export interface Incident {
+  id: string;
+  title: string;
+  status: IncidentStatus;
+  severity: Severity;
+  category: TicketCategory | null;
+  affectedCountries: Country[];
+  affectedBranches: string[];
+  isNetworkRelated: boolean;
+  rootCause: string | null;
+  resolutionNotes: string | null;
+  firstReportedAt: string | null;
+  detectedAt: string;
+  resolvedAt: string | null;
+  ticketCount: number;
+}

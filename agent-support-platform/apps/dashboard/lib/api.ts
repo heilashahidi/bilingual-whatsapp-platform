@@ -1,6 +1,7 @@
 import { getClientAuthToken } from "./auth-client";
 import type {
   Agent,
+  Incident,
   InternalUser,
   KnowledgeArticle,
   Message,
@@ -262,4 +263,46 @@ export async function createOutreachTicket(
     throw new Error(body || `Failed to create outreach ticket: ${res.status}`);
   }
   return res.json();
+}
+
+// ─── Incidents ─────────────────────────────────────────────────────────
+
+export async function fetchIncidents(
+  params: { status?: string; country?: string } = {},
+  token?: string
+): Promise<Incident[]> {
+  const search = new URLSearchParams();
+  if (params.status) search.set("status", params.status);
+  if (params.country) search.set("country", params.country);
+
+  const res = await fetch(
+    `${API_URL}/api/incidents${search.toString() ? `?${search}` : ""}`,
+    {
+      headers: await authHeaders(token),
+      cache: "no-store",
+    }
+  );
+  if (!res.ok) throw new Error(`Failed to fetch incidents: ${res.status}`);
+  const data = (await res.json()) as { incidents: Incident[] };
+  return data.incidents;
+}
+
+export async function updateIncident(
+  id: string,
+  patch: { status?: string; rootCause?: string; resolutionNotes?: string }
+): Promise<Incident> {
+  const res = await fetch(`${API_URL}/api/incidents/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(await authHeaders()),
+    },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `Failed to update incident: ${res.status}`);
+  }
+  const data = (await res.json()) as { incident: Incident };
+  return data.incident;
 }

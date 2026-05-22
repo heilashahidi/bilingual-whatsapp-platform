@@ -7,6 +7,7 @@ import { ticketRouter } from "./routes/tickets";
 import { agentRouter } from "./routes/agents";
 import { userRouter } from "./routes/users";
 import { knowledgeRouter } from "./routes/knowledge";
+import { incidentRouter } from "./routes/incidents";
 import { prisma } from "./services/database";
 import { initRealtime } from "./services/realtime";
 import { requireAuth } from "./middleware/auth";
@@ -47,6 +48,7 @@ app.use("/api/users", userRouter);
 app.use("/api/tickets", requireAuth, ticketRouter);
 app.use("/api/agents", requireAuth, agentRouter);
 app.use("/api/knowledge", requireAuth, knowledgeRouter);
+app.use("/api/incidents", requireAuth, incidentRouter);
 
 // ─── Start ──────────────────────────────────────────────────
 

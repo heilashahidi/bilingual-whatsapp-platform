@@ -4,6 +4,7 @@ import { emitTicketEvent } from "./realtime";
 import { findSuggestedResolutions } from "./kb-search";
 import { notifyNewTicket } from "./notifier";
 import { recordEvent } from "./audit";
+import { clusterTicket } from "./incident-clusterer";
 import { translateMessage } from "../integrations/translation";
 import { classifyMessage } from "../integrations/classification";
 
@@ -229,10 +230,16 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
   // ─── Step 9: Realtime broadcast ────────────────────────────
   emitTicketEvent(shouldCreateNew ? "created" : "message", ticket!.id);
 
-  // ─── Step 8: Notify (placeholder) ──────────────────────────
-  // TODO: Push to notification queue
-  // TODO: Incident clustering check
-  // TODO: Knowledge base similarity search for suggested resolutions
+  // ─── Step 10: Incident clustering ──────────────────────────
+  // Only on new tickets — appended messages on an already-clustered ticket
+  // don't change anything cluster-wise. Fire-and-forget so a slow cluster
+  // check never blocks the pipeline; the dashboard will pick up the
+  // resulting incident via the realtime event the clusterer emits.
+  if (shouldCreateNew) {
+    clusterTicket(ticket!.id).catch((err) =>
+      console.error("  ✗ incident clustering failed:", err)
+    );
+  }
 
   console.log("─── Pipeline complete ───\n");
 }

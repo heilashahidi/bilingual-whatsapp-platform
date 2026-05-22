@@ -15,7 +15,9 @@ export type AuditAction =
   | "message_sent"
   | "note_added"
   | "resolved"
-  | "deleted";
+  | "deleted"
+  | "clustered"
+  | "incident_formed";
 
 export function recordEvent(input: {
   ticketId: string;

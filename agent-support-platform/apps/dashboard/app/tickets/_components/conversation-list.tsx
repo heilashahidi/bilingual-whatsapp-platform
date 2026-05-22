@@ -71,6 +71,9 @@ export function ConversationList({
       } else if (filters.assigneeId) {
         if (t.assignedTo !== filters.assigneeId) return false;
       }
+      if (filters.incidentId) {
+        if (t.incident?.id !== filters.incidentId) return false;
+      }
       if (q) {
         const hay = [
           t.agent.name,
