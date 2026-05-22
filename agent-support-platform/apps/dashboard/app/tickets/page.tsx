@@ -3,6 +3,7 @@ import { getServerApiToken } from "@/lib/auth-server";
 import { RealtimeRefresh } from "@/lib/realtime-refresh";
 import { FiltersBar } from "./_components/filters-bar";
 import { KanbanBoard } from "./_components/kanban-board";
+import { TicketDrawer } from "./_components/ticket-drawer";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,9 @@ export default async function TicketsPage() {
           <KanbanBoard tickets={data.tickets} users={users} />
         </>
       )}
+
+      {/* Drawer mounts based on ?ticket=<id> in the URL */}
+      <TicketDrawer />
     </div>
   );
 }

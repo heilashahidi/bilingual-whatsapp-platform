@@ -314,7 +314,8 @@ function DraggableCard({
         />
       </label>
       <Link
-        href={`/tickets/${ticket.id}`}
+        href={`/tickets?ticket=${ticket.id}`}
+        scroll={false}
         className={`block rounded-lg bg-white p-3 ring-1 transition hover:-translate-y-px hover:shadow-md ${
           isSelected
             ? "ring-2 ring-emerald-500"
