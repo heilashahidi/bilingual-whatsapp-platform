@@ -1,6 +1,7 @@
-import { fetchTickets } from "@/lib/api";
+import { fetchTickets, fetchUsers } from "@/lib/api";
 import { getServerApiToken } from "@/lib/auth-server";
 import { RealtimeRefresh } from "@/lib/realtime-refresh";
+import { FiltersBar } from "./_components/filters-bar";
 import { KanbanBoard } from "./_components/kanban-board";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export default async function TicketsPage() {
   } catch (e) {
     error = e instanceof Error ? e.message : "Unknown error";
   }
+  const users = await fetchUsers(token).catch(() => []);
 
   const closedCount =
     data?.tickets.reduce((n, t) => (t.status === "closed" ? n + 1 : n), 0) ?? 0;
@@ -43,7 +45,12 @@ export default async function TicketsPage() {
         </div>
       )}
 
-      {data && <KanbanBoard tickets={data.tickets} />}
+      {data && (
+        <>
+          <FiltersBar users={users} />
+          <KanbanBoard tickets={data.tickets} users={users} />
+        </>
+      )}
     </div>
   );
 }

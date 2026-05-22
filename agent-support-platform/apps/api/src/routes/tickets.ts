@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../services/database";
 import { emitTicketEvent } from "../services/realtime";
 import { sendAgentResponse } from "../integrations/whatsapp";
+import { requireRole } from "../middleware/auth";
 
 const router = Router();
 
@@ -19,7 +20,7 @@ router.get("/", async (req: Request, res: Response) => {
     offset = "0",
   } = req.query;
 
-  const where: any = {};
+  const where: any = { deletedAt: null };
   if (status) where.status = status;
   if (severity) where.severity = severity;
   if (category) where.category = category;
@@ -50,8 +51,8 @@ router.get("/", async (req: Request, res: Response) => {
 // Full ticket detail with messages and suggested resolutions
 
 router.get("/:id", async (req: Request, res: Response) => {
-  const ticket = await prisma.ticket.findUnique({
-    where: { id: req.params.id },
+  const ticket = await prisma.ticket.findFirst({
+    where: { id: req.params.id, deletedAt: null },
     include: {
       agent: { include: { branch: true } },
       messages: { orderBy: { createdAt: "asc" } },
@@ -217,6 +218,32 @@ router.post("/:id/resolve", async (req: Request, res: Response) => {
   emitTicketEvent("updated", ticket.id);
 
   res.json(ticket);
+});
+
+// ─── DELETE /api/tickets/:id (admin only) ───────────────────
+// Soft delete — sets deletedAt + deletedBy. The row stays in the
+// database for compliance/audit; queries filter it out by default.
+// Hard delete is intentionally NOT exposed via the API.
+
+router.delete("/:id", requireRole("admin"), async (req: Request, res: Response) => {
+  const existing = await prisma.ticket.findFirst({
+    where: { id: req.params.id, deletedAt: null },
+  });
+  if (!existing) {
+    return res.status(404).json({ error: "Ticket not found" });
+  }
+
+  const ticket = await prisma.ticket.update({
+    where: { id: req.params.id },
+    data: {
+      deletedAt: new Date(),
+      deletedBy: req.user?.userId || req.user?.email || null,
+    },
+  });
+
+  emitTicketEvent("updated", ticket.id);
+
+  res.json({ id: ticket.id, deletedAt: ticket.deletedAt });
 });
 
 export { router as ticketRouter };

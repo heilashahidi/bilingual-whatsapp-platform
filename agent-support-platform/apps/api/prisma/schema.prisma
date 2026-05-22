@@ -141,9 +141,15 @@ model Ticket {
   // Use agent_timestamp (WhatsApp send time), not server receipt time
   agentReportedAt      DateTime?       // WhatsApp timestamp of first message
 
+  // Soft delete — hidden from queries when set. Hard delete is never
+  // exposed in the API; compliance requires retention of agent comms.
+  deletedAt            DateTime?
+  deletedBy            String?         // FK-like to InternalUser; not enforced
+
   @@index([agentId, status, createdAt])
   @@index([severity, slaFirstResponseDeadline])
   @@index([category, createdAt])
+  @@index([deletedAt])
 }
 
 // ─── Internal Notes ─────────────────────────────────────────

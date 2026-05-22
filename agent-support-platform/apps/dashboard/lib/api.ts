@@ -128,6 +128,17 @@ export async function resolveTicket(
   return res.json();
 }
 
+export async function deleteTicket(ticketId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/tickets/${ticketId}`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `Failed to delete ticket: ${res.status}`);
+  }
+}
+
 export async function createNote(
   ticketId: string,
   text: string

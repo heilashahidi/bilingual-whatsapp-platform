@@ -91,7 +91,6 @@ export interface TicketDetail extends Ticket {
   suggestedResolutions: SuggestedResolution[];
   botConversation: BotConversation | null;
   resolutionSummary: string | null;
-  assignedTo: string | null;
   notes: Note[];
 }
 
@@ -102,6 +101,7 @@ export interface Ticket {
   severity: Severity;
   productArea: string | null;
   tags: string[];
+  assignedTo: string | null;
   agentReportedAt: string | null;
   slaFirstResponseDeadline: string | null;
   createdAt: string;

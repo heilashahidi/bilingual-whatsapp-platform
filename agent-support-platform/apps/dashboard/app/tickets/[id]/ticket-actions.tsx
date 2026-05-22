@@ -2,7 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
+  deleteTicket,
   resolveTicket,
   updateTicket,
   type TicketPatch,
@@ -41,12 +43,15 @@ export function TicketActions({
   users: InternalUser[];
 }) {
   const router = useRouter();
+  const { data: session } = useSession();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
   const [resolutionSummary, setResolutionSummary] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const isOpen = ticket.status !== "resolved" && ticket.status !== "closed";
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "admin";
 
   function applyPatch(patch: TicketPatch) {
     setError(null);
@@ -70,6 +75,20 @@ export function TicketActions({
         router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Resolve failed");
+      }
+    });
+  }
+
+  function handleDelete() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await deleteTicket(ticket.id);
+        // Soft-deleted — navigate back to the kanban
+        router.push("/tickets");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Delete failed");
+        setConfirmDelete(false);
       }
     });
   }
@@ -214,7 +233,59 @@ export function TicketActions({
             Reopen ticket
           </button>
         )}
+
+        {ticket.status === "resolved" && (
+          <button
+            type="button"
+            onClick={() => applyPatch({ status: "closed" })}
+            disabled={pending}
+            className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:bg-slate-100"
+          >
+            Close ticket
+          </button>
+        )}
       </div>
+
+      {/* Admin-only soft delete. Hidden for non-admins entirely. */}
+      {isAdmin && (
+        <div className="border-t border-slate-200 pt-3">
+          {!confirmDelete ? (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              disabled={pending}
+              className="w-full rounded-md border border-red-200 px-3 py-2 text-xs text-red-700 hover:bg-red-50 disabled:bg-slate-100"
+            >
+              Delete ticket (admin)
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-red-800">
+                Soft-deletes this ticket. The row stays in the database for
+                audit; the UI hides it. Sure?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={pending}
+                  className="flex-1 rounded-md bg-red-600 px-3 py-2 text-xs font-medium text-white hover:bg-red-700 disabled:bg-slate-300"
+                >
+                  {pending ? "Deleting…" : "Confirm delete"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={pending}
+                  className="rounded-md border border-slate-300 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

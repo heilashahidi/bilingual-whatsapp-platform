@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   DndContext,
   DragOverlay,
@@ -16,8 +18,15 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import { updateTicket } from "@/lib/api";
-import type { Severity, Ticket, TicketStatus } from "@/lib/types";
+import type {
+  InternalUser,
+  Severity,
+  Ticket,
+  TicketStatus,
+} from "@/lib/types";
 import { SlaTimer } from "./sla-timer";
+import { readFiltersFromParams } from "./filters-bar";
+import { BulkActionsBar } from "./bulk-actions-bar";
 
 type KanbanStatus = Exclude<TicketStatus, "closed">;
 
@@ -35,12 +44,21 @@ const severityStyles: Record<Severity, string> = {
   low: "bg-slate-100 text-slate-700 ring-slate-200",
 };
 
-export function KanbanBoard({ tickets: serverTickets }: { tickets: Ticket[] }) {
+export function KanbanBoard({
+  tickets: serverTickets,
+  users,
+}: {
+  tickets: Ticket[];
+  users: InternalUser[];
+}) {
   // Local state shadows server props for optimistic drag-drop. Resyncs when
   // server pushes new data (via realtime refresh).
   const [tickets, setTickets] = useState(serverTickets);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const searchParams = useSearchParams();
+  const { data: session } = useSession();
 
   useEffect(() => {
     setTickets(serverTickets);
@@ -52,18 +70,70 @@ export function KanbanBoard({ tickets: serverTickets }: { tickets: Ticket[] }) {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
+  // Filter tickets according to URL params (managed by FiltersBar).
+  const filtered = useMemo(() => {
+    const filters = readFiltersFromParams(
+      new URLSearchParams(searchParams.toString())
+    );
+    const myId = (session?.user as { id?: string } | undefined)?.id;
+    const q = filters.search.trim().toLowerCase();
+
+    return tickets.filter((t) => {
+      if (filters.severities.size && !filters.severities.has(t.severity))
+        return false;
+      if (filters.countries.size && !filters.countries.has(t.agent.country))
+        return false;
+      if (filters.assigneeId === "me") {
+        if (!myId || t.assignedTo !== myId) return false;
+      } else if (filters.assigneeId === "unassigned") {
+        if (t.assignedTo) return false;
+      } else if (filters.assigneeId) {
+        if (t.assignedTo !== filters.assigneeId) return false;
+      }
+      if (q) {
+        const hay = [
+          t.agent.name,
+          t.agent.branch.name,
+          t.agent.phoneNumber,
+          ...t.tags,
+          t.messages[0]?.translatedText ?? "",
+          t.messages[0]?.originalText ?? "",
+          t.category,
+          t.productArea ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [tickets, searchParams, session]);
+
   const grouped: Record<KanbanStatus, Ticket[]> = {
     open: [],
     in_progress: [],
     waiting_on_agent: [],
     resolved: [],
   };
-  for (const t of tickets) {
+  for (const t of filtered) {
     if (t.status === "closed") continue;
     grouped[t.status as KanbanStatus]?.push(t);
   }
 
   const activeTicket = activeId ? tickets.find((t) => t.id === activeId) : null;
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+  }
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
@@ -123,6 +193,8 @@ export function KanbanBoard({ tickets: serverTickets }: { tickets: Ticket[] }) {
             label={col.label}
             accent={col.accent}
             tickets={grouped[col.status]}
+            selected={selected}
+            onToggleSelect={toggleSelect}
           />
         ))}
       </div>
@@ -130,6 +202,13 @@ export function KanbanBoard({ tickets: serverTickets }: { tickets: Ticket[] }) {
       <DragOverlay>
         {activeTicket ? <CardContent ticket={activeTicket} dragging /> : null}
       </DragOverlay>
+
+      <BulkActionsBar
+        selectedIds={selected}
+        users={users}
+        onClear={clearSelection}
+        onAfterAction={() => clearSelection()}
+      />
     </DndContext>
   );
 }
@@ -139,11 +218,15 @@ function Column({
   label,
   accent,
   tickets,
+  selected,
+  onToggleSelect,
 }: {
   status: KanbanStatus;
   label: string;
   accent: string;
   tickets: Ticket[];
+  selected: Set<string>;
+  onToggleSelect: (id: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
@@ -168,14 +251,29 @@ function Column({
             drop tickets here
           </div>
         ) : (
-          tickets.map((t) => <DraggableCard key={t.id} ticket={t} />)
+          tickets.map((t) => (
+            <DraggableCard
+              key={t.id}
+              ticket={t}
+              isSelected={selected.has(t.id)}
+              onToggleSelect={onToggleSelect}
+            />
+          ))
         )}
       </div>
     </div>
   );
 }
 
-function DraggableCard({ ticket }: { ticket: Ticket }) {
+function DraggableCard({
+  ticket,
+  isSelected,
+  onToggleSelect,
+}: {
+  ticket: Ticket;
+  isSelected: boolean;
+  onToggleSelect: (id: string) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: ticket.id });
 
@@ -188,10 +286,30 @@ function DraggableCard({ ticket }: { ticket: Ticket }) {
     : undefined;
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="relative">
+      {/* Checkbox sits over the card. Stops propagation so neither drag nor link fire. */}
+      <label
+        className="absolute right-2 top-2 z-10 flex h-5 w-5 cursor-pointer items-center justify-center"
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={(e) => {
+            e.stopPropagation();
+            onToggleSelect(ticket.id);
+          }}
+          className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-slate-900"
+        />
+      </label>
       <Link
         href={`/tickets/${ticket.id}`}
-        className="block rounded-md bg-white p-3 ring-1 ring-slate-200 transition hover:ring-slate-400 hover:shadow-sm"
+        className={`block rounded-md bg-white p-3 ring-1 transition hover:shadow-sm ${
+          isSelected
+            ? "ring-2 ring-slate-700"
+            : "ring-slate-200 hover:ring-slate-400"
+        }`}
       >
         <CardContent ticket={ticket} />
       </Link>
@@ -218,7 +336,7 @@ function CardContent({
           : "cursor-grab"
       }
     >
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-2 flex items-center justify-between gap-2 pr-6">
         <span
           className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${severityStyles[ticket.severity]}`}
         >
