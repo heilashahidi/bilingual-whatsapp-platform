@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../services/database";
 import { emitTicketEvent } from "../services/realtime";
 import { indexResolvedTicket } from "../services/kb-indexer";
+import { recordEvent } from "../services/audit";
 import { sendAgentResponse } from "../integrations/whatsapp";
 import { requireRole } from "../middleware/auth";
 
@@ -67,6 +68,10 @@ router.get("/:id", async (req: Request, res: Response) => {
         include: { author: { select: { id: true, name: true, role: true } } },
         orderBy: { createdAt: "asc" },
       },
+      events: {
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      },
     },
   });
 
@@ -129,6 +134,13 @@ router.post("/:id/messages", async (req: Request, res: Response) => {
       },
     });
 
+    recordEvent({
+      ticketId: ticket.id,
+      action: "message_sent",
+      actor: req.user,
+      payload: { translatedTo: ticket.agent.preferredLanguage },
+    });
+
     emitTicketEvent("message", ticket.id);
 
     res.json({ message, translatedText });
@@ -143,6 +155,13 @@ router.post("/:id/messages", async (req: Request, res: Response) => {
 
 router.patch("/:id", async (req: Request, res: Response) => {
   const { status, severity, category, assignedTo, tags, incidentId } = req.body;
+
+  // Read before-state so the audit log can record what changed.
+  const before = await prisma.ticket.findUnique({
+    where: { id: req.params.id },
+    select: { status: true, severity: true, category: true, assignedTo: true, tags: true },
+  });
+  if (!before) return res.status(404).json({ error: "Ticket not found" });
 
   const data: any = {};
   if (status) data.status = status;
@@ -161,6 +180,48 @@ router.patch("/:id", async (req: Request, res: Response) => {
     data,
     include: { agent: true },
   });
+
+  // Record one audit row per dimension that actually changed.
+  if (status && status !== before.status) {
+    recordEvent({
+      ticketId: ticket.id,
+      action: "status_changed",
+      actor: req.user,
+      payload: { from: before.status, to: status },
+    });
+  }
+  if (severity && severity !== before.severity) {
+    recordEvent({
+      ticketId: ticket.id,
+      action: "severity_changed",
+      actor: req.user,
+      payload: { from: before.severity, to: severity },
+    });
+  }
+  if (category && category !== before.category) {
+    recordEvent({
+      ticketId: ticket.id,
+      action: "category_changed",
+      actor: req.user,
+      payload: { from: before.category, to: category },
+    });
+  }
+  if (assignedTo !== undefined && assignedTo !== before.assignedTo) {
+    recordEvent({
+      ticketId: ticket.id,
+      action: assignedTo ? "assigned" : "unassigned",
+      actor: req.user,
+      payload: { from: before.assignedTo, to: assignedTo },
+    });
+  }
+  if (tags && JSON.stringify(tags) !== JSON.stringify(before.tags)) {
+    recordEvent({
+      ticketId: ticket.id,
+      action: "tagged",
+      actor: req.user,
+      payload: { from: before.tags, to: tags },
+    });
+  }
 
   emitTicketEvent("updated", ticket.id);
 
@@ -191,6 +252,13 @@ router.post("/:id/notes", async (req: Request, res: Response) => {
     include: { author: { select: { id: true, name: true, role: true } } },
   });
 
+  recordEvent({
+    ticketId: req.params.id,
+    action: "note_added",
+    actor: req.user,
+    payload: { noteId: note.id, snippet: text.trim().slice(0, 80) },
+  });
+
   emitTicketEvent("updated", req.params.id);
 
   res.json(note);
@@ -209,6 +277,15 @@ router.post("/:id/resolve", async (req: Request, res: Response) => {
       resolvedAt: new Date(),
       resolutionSummary: resolutionSummary || null,
     },
+  });
+
+  recordEvent({
+    ticketId: ticket.id,
+    action: "resolved",
+    actor: req.user,
+    payload: resolutionSummary
+      ? { hasSummary: true, summarySnippet: String(resolutionSummary).slice(0, 80) }
+      : { hasSummary: false },
   });
 
   // Drafts a KnowledgeArticle from this resolved ticket so the team can
@@ -244,6 +321,12 @@ router.delete("/:id", requireRole("admin"), async (req: Request, res: Response) 
       deletedAt: new Date(),
       deletedBy: req.user?.userId || req.user?.email || null,
     },
+  });
+
+  recordEvent({
+    ticketId: ticket.id,
+    action: "deleted",
+    actor: req.user,
   });
 
   emitTicketEvent("updated", ticket.id);

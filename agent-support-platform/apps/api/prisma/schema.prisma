@@ -136,6 +136,7 @@ model Ticket {
   resolvedAt           DateTime?
   messages             Message[]
   notes                Note[]
+  events               Event[]
   suggestedResolutions TicketSuggestedResolution[]
 
   // Use agent_timestamp (WhatsApp send time), not server receipt time
@@ -150,6 +151,23 @@ model Ticket {
   @@index([severity, slaFirstResponseDeadline])
   @@index([category, createdAt])
   @@index([deletedAt])
+}
+
+// ─── Audit Events ───────────────────────────────────────────
+// One row per ticket mutation. Powers the Activity tab on the detail
+// page and serves as the compliance audit trail.
+
+model Event {
+  id        String   @id @default(uuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+  actorId   String?  // InternalUser id, null for system/webhook
+  actorEmail String? // denormalized in case the user is later deleted
+  action    String   // e.g. "status_changed", "assigned", "note_added"
+  payload   Json?    // e.g. { from: "open", to: "in_progress" }
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
 }
 
 // ─── Internal Notes ─────────────────────────────────────────

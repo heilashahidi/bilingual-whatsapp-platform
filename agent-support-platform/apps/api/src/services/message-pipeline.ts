@@ -2,6 +2,8 @@ import { RawMessage, EXTENDED_SLA_COUNTRIES, SLA_DEFAULTS } from "@asp/shared";
 import { prisma } from "./database";
 import { emitTicketEvent } from "./realtime";
 import { findSuggestedResolutions } from "./kb-search";
+import { notifyNewTicket } from "./notifier";
+import { recordEvent } from "./audit";
 import { translateMessage } from "../integrations/translation";
 import { classifyMessage } from "../integrations/classification";
 
@@ -146,6 +148,17 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
       },
     });
     console.log(`  ✓ Created ticket ${ticket.id} [${ticket.severity}/${ticket.category}]`);
+
+    recordEvent({
+      ticketId: ticket.id,
+      action: "ticket_created",
+      actor: null, // webhook origin, no signed-in user
+      payload: {
+        severity: ticket.severity,
+        category: ticket.category,
+        source: "whatsapp_inbound",
+      },
+    });
   } else {
     console.log(`  ✓ Appending to existing ticket ${ticket!.id}`);
 
@@ -196,7 +209,24 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
     }
   }
 
-  // ─── Step 8: Realtime broadcast ────────────────────────────
+  // ─── Step 8: Slack notify for critical/high ────────────────
+  // Fire-and-forget so a slow Slack response doesn't block.
+  if (shouldCreateNew) {
+    notifyNewTicket({
+      ticketId: ticket!.id,
+      severity: ticket!.severity,
+      category: ticket!.category,
+      productArea: ticket!.productArea,
+      tags: ticket!.tags,
+      agentName: agent.name,
+      agentPhone: agent.phoneNumber,
+      agentCountry: agent.country,
+      branchName: agent.branch.name,
+      messageSnippet: translatedText || raw.textBody || "",
+    }).catch((err) => console.error("  ✗ notifier failed:", err));
+  }
+
+  // ─── Step 9: Realtime broadcast ────────────────────────────
   emitTicketEvent(shouldCreateNew ? "created" : "message", ticket!.id);
 
   // ─── Step 8: Notify (placeholder) ──────────────────────────

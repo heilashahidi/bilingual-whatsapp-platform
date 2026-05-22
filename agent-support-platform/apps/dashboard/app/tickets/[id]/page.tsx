@@ -4,6 +4,7 @@ import { fetchTicket, fetchUsers } from "@/lib/api";
 import { getServerApiToken } from "@/lib/auth-server";
 import { RealtimeRefresh } from "@/lib/realtime-refresh";
 import type { Message, Note, Severity, TicketStatus } from "@/lib/types";
+import { ActivityPanel } from "./activity-panel";
 import { ResponseComposer } from "./response-composer";
 import { TicketActions } from "./ticket-actions";
 import { SlaTimer } from "../_components/sla-timer";
@@ -407,6 +408,8 @@ export default async function TicketDetailPage({
               </div>
             </div>
           )}
+
+          <ActivityPanel events={ticket.events} />
 
           {ticket.botConversation && (
             <div className="rounded-lg border border-slate-200 bg-white p-4">

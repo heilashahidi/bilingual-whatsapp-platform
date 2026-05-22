@@ -68,6 +68,28 @@ export interface KnowledgeArticle {
   updatedAt: string;
 }
 
+export type AuditAction =
+  | "ticket_created"
+  | "status_changed"
+  | "severity_changed"
+  | "category_changed"
+  | "assigned"
+  | "unassigned"
+  | "tagged"
+  | "message_sent"
+  | "note_added"
+  | "resolved"
+  | "deleted";
+
+export interface AuditEvent {
+  id: string;
+  action: AuditAction;
+  actorId: string | null;
+  actorEmail: string | null;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export interface Note {
   id: string;
   text: string;
@@ -109,6 +131,7 @@ export interface TicketDetail extends Ticket {
   botConversation: BotConversation | null;
   resolutionSummary: string | null;
   notes: Note[];
+  events: AuditEvent[];
 }
 
 export interface Ticket {
