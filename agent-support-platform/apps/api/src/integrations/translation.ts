@@ -21,7 +21,7 @@ export async function translateMessage(
   targetLanguage: string
 ): Promise<TranslationResult> {
   if (process.env.USE_REAL_TRANSLATION === "true") {
-    return translateWithGoogle(text, targetLanguage);
+    return translateWithClaude(text, targetLanguage);
   }
   return translateStub(text, targetLanguage);
 }
@@ -35,12 +35,93 @@ export async function translateResponse(
   targetLanguage: string
 ): Promise<TranslationResult> {
   if (process.env.USE_REAL_TRANSLATION === "true") {
-    return translateWithGoogle(text, targetLanguage);
+    return translateWithClaude(text, targetLanguage);
   }
   return translateStub(text, targetLanguage);
 }
 
-// ─── Google Cloud Translation (production) ──────────────────
+// ─── Claude Haiku translation ───────────────────────────────
+// Pragmatic choice: zero new infra (we already use Claude for
+// classification), handles all 4 languages well, structured JSON
+// output. ~300–500 ms latency, ~$0.0001 per translation. For
+// production-grade quality + custom fintech glossaries, swap to
+// translateWithGoogle below.
+
+const LANG_NAMES: Record<string, string> = {
+  en: "English",
+  ht: "Haitian Creole",
+  fr: "French",
+  es: "Spanish",
+};
+
+async function translateWithClaude(
+  text: string,
+  targetLanguage: string
+): Promise<TranslationResult> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    console.warn("  ⚠ No ANTHROPIC_API_KEY — falling back to stub translation");
+    return translateStub(text, targetLanguage);
+  }
+
+  const targetName = LANG_NAMES[targetLanguage] || targetLanguage;
+
+  const prompt = `Translate the message below into ${targetName}.
+
+Reply with ONLY a JSON object. No prose, no markdown.
+
+Shape:
+{
+  "translatedText": "<the translation>",
+  "detectedLanguage": "<two-letter ISO code: en, ht, fr, or es>",
+  "confidence": <number 0.0 to 1.0>
+}
+
+Rules:
+- Preserve product/branch names, error strings, and numbers literally.
+- If the source is already in ${targetName}, return it unchanged with confidence 1.0.
+- Keep tone and register (a panicked agent stays panicked).
+
+Message:
+${text}`;
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 600,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    console.error(`  ✗ Claude translation API error: ${response.status}`);
+    return translateStub(text, targetLanguage);
+  }
+
+  const data = await response.json();
+  const content = data.content?.[0]?.text || "";
+
+  try {
+    const clean = content.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(clean);
+    return {
+      translatedText: parsed.translatedText || text,
+      detectedLanguage: parsed.detectedLanguage || "unknown",
+      confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.85,
+    };
+  } catch {
+    console.error("  ✗ Failed to parse Claude translation output:", content);
+    return translateStub(text, targetLanguage);
+  }
+}
+
+// ─── Google Cloud Translation (alternative — not currently used) ──────
 
 async function translateWithGoogle(
   text: string,

@@ -1,0 +1,26 @@
+# Build artifacts and dev metadata that shouldn't ship into the image
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/coverage
+**/tsconfig.tsbuildinfo
+
+# Secrets and local config
+**/.env
+**/.env.local
+**/.env.*.local
+**/google-credentials.json
+
+# Repo metadata
+.git
+.gitignore
+.DS_Store
+*.log
+.vscode
+.idea
+
+# Docs aren't needed in production images
+docs
+README.md
+CHANGELOG.md

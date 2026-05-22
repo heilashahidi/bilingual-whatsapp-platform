@@ -1,0 +1,29 @@
+# Fly.io config for the API service.
+# First time:  fly launch --config fly.api.toml --copy-config --no-deploy
+# Subsequent:  fly deploy --config fly.api.toml
+#
+# After `fly launch` assigns the app name, replace REPLACE_ME below.
+
+app = "heilashahidi"
+primary_region = "iad"
+
+[build]
+  dockerfile = "apps/api/Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3001"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  # Keep at least one machine running so inbound Twilio webhooks
+  # never hit a cold start.
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
