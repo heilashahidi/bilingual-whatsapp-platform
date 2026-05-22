@@ -5,6 +5,7 @@ import { RealtimeRefresh } from "@/lib/realtime-refresh";
 import type { Message, Severity, TicketStatus } from "@/lib/types";
 import { ResponseComposer } from "./response-composer";
 import { TicketActions } from "./ticket-actions";
+import { SlaTimer } from "../_components/sla-timer";
 
 export const dynamic = "force-dynamic";
 
@@ -298,6 +299,9 @@ export default async function TicketDetailPage({
                 {ticket.slaFirstResponseDeadline
                   ? formatTime(ticket.slaFirstResponseDeadline)
                   : "—"}
+              </div>
+              <div className="pt-1">
+                <SlaTimer deadline={ticket.slaFirstResponseDeadline} />
               </div>
             </div>
           </div>
