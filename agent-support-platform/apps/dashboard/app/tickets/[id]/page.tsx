@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { fetchTicket, fetchUsers } from "@/lib/api";
 import { RealtimeRefresh } from "@/lib/realtime-refresh";
 import type { Message, Severity, TicketStatus } from "@/lib/types";
+import { NotesPanel } from "./notes-panel";
 import { ResponseComposer } from "./response-composer";
 import { TicketActions } from "./ticket-actions";
 import { SlaTimer } from "../_components/sla-timer";
@@ -51,6 +52,31 @@ function senderLabel(m: Message): string {
   return "You";
 }
 
+function DeliveryStatus({ message }: { message: Message }) {
+  if (message.direction !== "outbound") return null;
+
+  // WhatsApp-style: ✓ sent → ✓✓ delivered (grey) → ✓✓ read (blue)
+  if (message.readAt) {
+    return (
+      <span className="text-blue-300" title={`Read · ${new Date(message.readAt).toLocaleString()}`}>
+        ✓✓
+      </span>
+    );
+  }
+  if (message.deliveredAt) {
+    return (
+      <span className="text-slate-400" title={`Delivered · ${new Date(message.deliveredAt).toLocaleString()}`}>
+        ✓✓
+      </span>
+    );
+  }
+  return (
+    <span className="text-slate-500" title="Sent — awaiting delivery receipt">
+      ✓
+    </span>
+  );
+}
+
 function MessageBubble({ message }: { message: Message }) {
   const isInbound = message.direction === "inbound";
 
@@ -86,6 +112,11 @@ function MessageBubble({ message }: { message: Message }) {
           {lowConfidence && (
             <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">
               translation may be inaccurate
+            </span>
+          )}
+          {!isInbound && (
+            <span className="ml-auto">
+              <DeliveryStatus message={message} />
             </span>
           )}
         </div>
@@ -232,6 +263,8 @@ export default async function TicketDetailPage({
               )}
             </div>
           </div>
+
+          <NotesPanel ticketId={ticket.id} notes={ticket.notes} />
 
           <ResponseComposer ticketId={ticket.id} />
         </div>

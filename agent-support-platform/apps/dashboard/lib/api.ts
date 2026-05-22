@@ -1,6 +1,7 @@
 import type {
   InternalUser,
   Message,
+  Note,
   Severity,
   Ticket,
   TicketCategory,
@@ -93,6 +94,22 @@ export async function resolveTicket(
   if (!res.ok) {
     const body = await res.text();
     throw new Error(body || `Failed to resolve ticket: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function createNote(
+  ticketId: string,
+  text: string
+): Promise<Note> {
+  const res = await fetch(`${API_URL}/api/tickets/${ticketId}/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `Failed to create note: ${res.status}`);
   }
   return res.json();
 }

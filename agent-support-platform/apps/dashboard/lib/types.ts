@@ -47,6 +47,16 @@ export interface Message {
   contentType: "text" | "image" | "audio" | "video" | "document";
   mediaUrls: string[];
   createdAt: string;
+  deliveredAt: string | null;
+  readAt: string | null;
+}
+
+export interface Note {
+  id: string;
+  text: string;
+  createdAt: string;
+  authorId: string | null;
+  author: { id: string; name: string; role: string } | null;
 }
 
 export interface InternalUser {
@@ -82,6 +92,7 @@ export interface TicketDetail extends Ticket {
   botConversation: BotConversation | null;
   resolutionSummary: string | null;
   assignedTo: string | null;
+  notes: Note[];
 }
 
 export interface Ticket {

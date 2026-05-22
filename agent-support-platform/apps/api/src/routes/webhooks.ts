@@ -1,5 +1,7 @@
 import { Router, Request, Response } from "express";
 import twilio from "twilio";
+import { prisma } from "../services/database";
+import { emitTicketEvent } from "../services/realtime";
 import { normalizeInboundMessage } from "../services/message-normalizer";
 import { processInboundMessage } from "../services/message-pipeline";
 
@@ -71,9 +73,36 @@ router.post("/whatsapp/status", async (req: Request, res: Response) => {
 
     console.log(`  Delivery status: ${MessageSid} → ${MessageStatus} (${To})`);
 
-    // TODO: Update message delivery status in database
+    // Twilio status flow: queued → sent → delivered → read.
+    // We only persist transitions that change UI state.
+    const updateData: { deliveredAt?: Date; readAt?: Date } = {};
+    if (MessageStatus === "delivered") {
+      updateData.deliveredAt = new Date();
+    } else if (MessageStatus === "read") {
+      updateData.readAt = new Date();
+      // A read receipt implies delivery; backfill if missing.
+      updateData.deliveredAt = updateData.deliveredAt || new Date();
+    }
+
+    if (Object.keys(updateData).length === 0) return;
+
+    const message = await prisma.message.findFirst({
+      where: { whatsappMessageId: MessageSid },
+      select: { id: true, ticketId: true, deliveredAt: true, readAt: true },
+    });
+    if (!message) return;
+
+    // Don't clobber an existing earlier timestamp
+    const finalData: { deliveredAt?: Date; readAt?: Date } = {};
+    if (updateData.deliveredAt && !message.deliveredAt)
+      finalData.deliveredAt = updateData.deliveredAt;
+    if (updateData.readAt && !message.readAt) finalData.readAt = updateData.readAt;
+    if (Object.keys(finalData).length === 0) return;
+
+    await prisma.message.update({ where: { id: message.id }, data: finalData });
+
     // TODO: If "delivered", update agent connectivity status to "online"
-    // TODO: If status hasn't changed in 2+ hours, flag as "pending delivery"
+    emitTicketEvent("updated", message.ticketId);
   } catch (error) {
     console.error("✗ Error processing status callback:", error);
   }

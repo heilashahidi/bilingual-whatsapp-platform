@@ -135,10 +135,24 @@ model Ticket {
   updatedAt            DateTime        @updatedAt
   resolvedAt           DateTime?
   messages             Message[]
+  notes                Note[]
   suggestedResolutions TicketSuggestedResolution[]
 
   // Use agent_timestamp (WhatsApp send time), not server receipt time
   agentReportedAt      DateTime?       // WhatsApp timestamp of first message
+}
+
+// ─── Internal Notes ─────────────────────────────────────────
+// Team-only commentary on a ticket. Never sent to the agent.
+
+model Note {
+  id        String        @id @default(uuid())
+  ticketId  String
+  ticket    Ticket        @relation(fields: [ticketId], references: [id])
+  authorId  String?
+  author    InternalUser? @relation(fields: [authorId], references: [id])
+  text      String
+  createdAt DateTime      @default(now())
 }
 
 model Message {
@@ -184,6 +198,7 @@ model InternalUser {
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
   assignedTickets         Ticket[]
+  notes                   Note[]
 }
 
 // ─── Incidents ──────────────────────────────────────────────

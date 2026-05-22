@@ -61,6 +61,10 @@ router.get("/:id", async (req: Request, res: Response) => {
         orderBy: { similarityScore: "desc" },
       },
       botConversation: true,
+      notes: {
+        include: { author: { select: { id: true, name: true, role: true } } },
+        orderBy: { createdAt: "asc" },
+      },
     },
   });
 
@@ -159,6 +163,35 @@ router.patch("/:id", async (req: Request, res: Response) => {
   emitTicketEvent("updated", ticket.id);
 
   res.json(ticket);
+});
+
+// ─── POST /api/tickets/:id/notes ────────────────────────────
+// Add an internal team-only note. Never sent to the agent.
+
+router.post("/:id/notes", async (req: Request, res: Response) => {
+  const { text, authorId } = req.body;
+
+  if (!text || typeof text !== "string" || !text.trim()) {
+    return res.status(400).json({ error: "text is required" });
+  }
+
+  const ticket = await prisma.ticket.findUnique({ where: { id: req.params.id } });
+  if (!ticket) {
+    return res.status(404).json({ error: "Ticket not found" });
+  }
+
+  const note = await prisma.note.create({
+    data: {
+      ticketId: req.params.id,
+      authorId: authorId || null,
+      text: text.trim(),
+    },
+    include: { author: { select: { id: true, name: true, role: true } } },
+  });
+
+  emitTicketEvent("updated", req.params.id);
+
+  res.json(note);
 });
 
 // ─── POST /api/tickets/:id/resolve ──────────────────────────
