@@ -1,5 +1,6 @@
 import { getClientAuthToken } from "./auth-client";
 import type {
+  Agent,
   InternalUser,
   KnowledgeArticle,
   Message,
@@ -207,4 +208,57 @@ export async function fetchUsers(token?: string): Promise<InternalUser[]> {
   if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`);
   const data = (await res.json()) as { users: InternalUser[] };
   return data.users;
+}
+
+// ─── Agents (search) ──────────────────────────────────────────────────
+// Used by the New Ticket modal's agent picker.
+
+export async function fetchAgents(
+  params: { q?: string; limit?: number } = {},
+  token?: string
+): Promise<Agent[]> {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.limit) search.set("limit", String(params.limit));
+
+  const res = await fetch(
+    `${API_URL}/api/agents${search.toString() ? `?${search}` : ""}`,
+    {
+      headers: await authHeaders(token),
+      cache: "no-store",
+    }
+  );
+  if (!res.ok) throw new Error(`Failed to search agents: ${res.status}`);
+  const data = (await res.json()) as { agents: Agent[] };
+  return data.agents;
+}
+
+// ─── Outreach ticket ──────────────────────────────────────────────────
+// Support-team-initiated thread. Backend translates the message into the
+// agent's preferredLanguage and sends via Twilio before creating the ticket.
+
+export interface OutreachTicketInput {
+  agentId: string;
+  message: string;
+  severity: Severity;
+  category: TicketCategory;
+  tags?: string[];
+}
+
+export async function createOutreachTicket(
+  input: OutreachTicketInput
+): Promise<Ticket> {
+  const res = await fetch(`${API_URL}/api/tickets/outreach`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(await authHeaders()),
+    },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `Failed to create outreach ticket: ${res.status}`);
+  }
+  return res.json();
 }

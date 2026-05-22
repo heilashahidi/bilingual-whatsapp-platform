@@ -4,16 +4,23 @@ import { prisma } from "../services/database";
 const router = Router();
 
 // ─── GET /api/agents ────────────────────────────────────────
+// List/search agents. Accepts ?q=<string> for fuzzy match across name,
+// phone, and branch name (powers the New Ticket modal picker).
+// Returns { agents: [...] } so the response shape matches the rest of
+// the API.
 
 router.get("/", async (req: Request, res: Response) => {
-  const { country, search, limit = "50", offset = "0" } = req.query;
+  const { country, limit = "50", offset = "0" } = req.query;
+  // Accept both `q` (new modal) and `search` (older callers)
+  const q = (req.query.q || req.query.search) as string | undefined;
 
   const where: any = {};
   if (country) where.country = country;
-  if (search) {
+  if (q && q.trim()) {
     where.OR = [
-      { name: { contains: search as string, mode: "insensitive" } },
-      { phoneNumber: { contains: search as string } },
+      { name: { contains: q, mode: "insensitive" } },
+      { phoneNumber: { contains: q } },
+      { branch: { name: { contains: q, mode: "insensitive" } } },
     ];
   }
 
@@ -21,14 +28,13 @@ router.get("/", async (req: Request, res: Response) => {
     where,
     include: {
       branch: true,
-      _count: { select: { tickets: true } },
     },
     orderBy: { name: "asc" },
     take: parseInt(limit as string),
     skip: parseInt(offset as string),
   });
 
-  res.json(agents);
+  res.json({ agents });
 });
 
 // ─── GET /api/agents/:id ───────────────────────────────────

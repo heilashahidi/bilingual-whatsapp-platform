@@ -356,8 +356,7 @@ function DraggableCard({
         />
       </label>
       <Link
-        href={`/tickets?ticket=${ticket.id}`}
-        scroll={false}
+        href={`/tickets/${ticket.id}`}
         className={`block rounded-lg bg-white ${density === "compact" ? "p-2.5" : "p-3"} ring-1 transition hover:-translate-y-px hover:shadow-md ${
           isSelected
             ? "ring-2 ring-emerald-500"
@@ -402,7 +401,7 @@ function CardContent({
       }
     >
       {/* Row 1 — severity + SLA */}
-      <div className={`flex items-center justify-between gap-2 pr-6 ${isCompact ? "mb-1.5" : "mb-2"}`}>
+      <div className="mb-2 flex items-center justify-between gap-2 pr-6">
         <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${sev.chip}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${sev.dot}`} />
           {ticket.severity}
@@ -411,7 +410,7 @@ function CardContent({
       </div>
 
       {/* Row 2 — ticket meta */}
-      <div className={`flex items-center gap-1.5 text-[11px] text-slate-500 ${isCompact ? "mb-1.5" : "mb-2"}`}>
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] text-slate-500">
         <span className="font-mono">#{ticket.id.slice(0, 6)}</span>
         <span className="text-slate-300">·</span>
         <span title={`${country.label} · ${country.langLabel}`} className="inline-flex items-center gap-1">
@@ -423,28 +422,21 @@ function CardContent({
         </span>
       </div>
 
-      {/* Message: translated (primary) + original (italic, dimmed).
-          Compact mode skips the message body entirely — agent name + SLA
-          + incident/resolution pills carry the meaning at high density. */}
-      {!isCompact && (
-        <>
-          <p className="line-clamp-2 text-sm leading-snug text-slate-900">
-            {snippet}
-          </p>
-          {bilingual && original && original !== translated && (
-            <p
-              dir="auto"
-              className="mt-1 line-clamp-1 border-l-2 border-slate-200 pl-2 text-[11.5px] italic leading-snug text-slate-500"
-            >
-              {original}
-            </p>
-          )}
-        </>
+      {/* Message: translated (primary) + original (italic, dimmed) */}
+      <p className="line-clamp-2 text-sm leading-snug text-slate-900">
+        {snippet}
+      </p>
+      {bilingual && !isCompact && original && original !== translated && (
+        <p
+          dir="auto"
+          className="mt-1 line-clamp-1 border-l-2 border-slate-200 pl-2 text-[11.5px] italic leading-snug text-slate-500"
+        >
+          {original}
+        </p>
       )}
 
-      {/* Agent row — branch name stays in compact mode (it's the location
-          context triagers rely on for incident clustering decisions). */}
-      <div className={`flex items-center gap-2 ${isCompact ? "mt-0" : "mt-2.5"}`}>
+      {/* Agent row */}
+      <div className="mt-2.5 flex items-center gap-2">
         <ConnectivityDot status={ticket.agent.connectivityStatus} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-[12.5px] font-medium text-slate-900">
@@ -471,33 +463,27 @@ function CardContent({
         </div>
       )}
 
-      {/* Incident grouping pill — shows cluster size when the API includes it. */}
+      {/* Incident grouping pill */}
       {ticket.incident && (
         <div className="mt-2 flex items-center gap-1.5 rounded-md border border-rose-200/70 bg-rose-50 px-2 py-1 text-[10.5px] font-medium text-rose-700">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
             <path d="M12 2L2 22h20L12 2z"/><path d="M12 9v5"/><circle cx="12" cy="18" r="1" fill="currentColor"/>
           </svg>
-          <span className="truncate">{ticket.incident.title}</span>
-          {typeof ticket.incident.ticketCount === "number" && ticket.incident.ticketCount > 1 && (
-            <span className="ml-auto shrink-0 rounded bg-rose-100 px-1 font-mono text-[10px] tabular-nums text-rose-700">
-              ×{ticket.incident.ticketCount}
-            </span>
-          )}
+          <span className="truncate">incident: {ticket.incident.title}</span>
         </div>
       )}
 
-      {/* Resolution summary — shows on resolved/closed cards so triage can
-          clear a cluster at a glance ("Pushed hotfix 2.4.1 — 14 cards all
-          resolved by same fix"). */}
-      {(ticket.status === "resolved" || ticket.status === "closed") &&
-        ticket.resolutionSummary && (
-          <div className="mt-2 flex items-start gap-1.5 rounded-md bg-emerald-50 px-2 py-1 text-[10.5px] leading-snug text-emerald-700 ring-1 ring-inset ring-emerald-200/70">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="mt-0.5 shrink-0" aria-hidden>
-              <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span className="line-clamp-2">{ticket.resolutionSummary}</span>
-          </div>
-        )}
+      {/* Resolution summary — shows on resolved cards so triage can see at
+          a glance what was done. Requires `resolutionSummary` to be present
+          on the list response (not just TicketDetail). */}
+      {ticket.status === "resolved" && ticket.resolutionSummary && (
+        <div className="mt-2 flex items-start gap-1.5 rounded-md bg-emerald-50 px-2 py-1 text-[10.5px] leading-snug text-emerald-700 ring-1 ring-inset ring-emerald-200/70">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="mt-0.5 shrink-0" aria-hidden>
+            <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span className="line-clamp-2">{ticket.resolutionSummary}</span>
+        </div>
+      )}
     </div>
   );
 }

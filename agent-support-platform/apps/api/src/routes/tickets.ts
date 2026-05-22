@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { EXTENDED_SLA_COUNTRIES, SLA_DEFAULTS } from "@asp/shared";
 import { prisma } from "../services/database";
 import { emitTicketEvent } from "../services/realtime";
 import { indexResolvedTicket } from "../services/kb-indexer";
@@ -34,7 +35,15 @@ router.get("/", async (req: Request, res: Response) => {
     include: {
       agent: { include: { branch: true } },
       messages: { orderBy: { createdAt: "desc" }, take: 1 },
-      incident: true,
+      incident: {
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          severity: true,
+          _count: { select: { tickets: true } },
+        },
+      },
     },
     orderBy: [
       { severity: "asc" }, // critical first
@@ -44,9 +53,25 @@ router.get("/", async (req: Request, res: Response) => {
     skip: parseInt(offset as string),
   });
 
+  // Flatten incident._count.tickets → incident.ticketCount so the
+  // dashboard doesn't have to reach into Prisma's nested count shape.
+  const mapped = tickets.map((t) => {
+    if (!t.incident) return t;
+    const { _count, ...rest } = t.incident as typeof t.incident & {
+      _count?: { tickets?: number };
+    };
+    return {
+      ...t,
+      incident: {
+        ...rest,
+        ticketCount: _count?.tickets ?? 0,
+      },
+    };
+  });
+
   const total = await prisma.ticket.count({ where });
 
-  res.json({ tickets, total });
+  res.json({ tickets: mapped, total });
 });
 
 // ─── GET /api/tickets/:id ───────────────────────────────────
@@ -300,6 +325,109 @@ router.post("/:id/resolve", async (req: Request, res: Response) => {
   emitTicketEvent("updated", ticket.id);
 
   res.json(ticket);
+});
+
+// ─── POST /api/tickets/outreach ─────────────────────────────
+// Support-team-initiated thread. Translates the message into the
+// agent's preferred language, sends it via Twilio, then creates the
+// Ticket with the outbound message attached as the first message.
+
+router.post("/outreach", async (req: Request, res: Response) => {
+  const { agentId, message, severity, category, tags } = req.body as {
+    agentId?: string;
+    message?: string;
+    severity?: "critical" | "high" | "medium" | "low";
+    category?: "bug_report" | "operational_complaint" | "feature_request" | "question" | "other";
+    tags?: string[];
+  };
+
+  if (!agentId || !message?.trim() || !severity || !category) {
+    return res.status(400).json({
+      error: "agentId, message, severity, and category are required",
+    });
+  }
+
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    include: { branch: true },
+  });
+  if (!agent) {
+    return res.status(404).json({ error: "Agent not found" });
+  }
+
+  try {
+    // Translate + send WhatsApp (same pipeline used for replies).
+    const { messageSid, translatedText } = await sendAgentResponse(
+      agent.phoneNumber,
+      message.trim(),
+      agent.preferredLanguage,
+      agent.country
+    );
+
+    // SLA: same computation as the inbound pipeline.
+    const slaProfile = EXTENDED_SLA_COUNTRIES.includes(agent.country)
+      ? SLA_DEFAULTS.extended
+      : SLA_DEFAULTS.standard;
+    const slaConfig = slaProfile[severity];
+    const now = new Date();
+
+    // Create ticket + first message in a single transaction so a partial
+    // failure (e.g., DB hiccup after Twilio already sent) doesn't orphan
+    // the WhatsApp message.
+    const ticket = await prisma.ticket.create({
+      data: {
+        agentId: agent.id,
+        status: "waiting_on_agent", // We've messaged them; awaiting reply.
+        category,
+        severity,
+        tags: tags || [],
+        agentReportedAt: now,
+        slaFirstResponseDeadline: new Date(
+          now.getTime() + slaConfig.firstResponseMinutes * 60000
+        ),
+        slaResolutionDeadline: new Date(
+          now.getTime() + slaConfig.resolutionMinutes * 60000
+        ),
+        // Caller initiated — they've "responded" as the opening act.
+        slaFirstResponseMet: true,
+        messages: {
+          create: [
+            {
+              direction: "outbound",
+              senderType: "internal_user",
+              senderId: req.user?.userId || null,
+              originalText: message.trim(),
+              originalLanguage: "en",
+              translatedText,
+              contentType: "text",
+              whatsappMessageId: messageSid,
+            },
+          ],
+        },
+      },
+      include: {
+        agent: { include: { branch: true } },
+        messages: { orderBy: { createdAt: "asc" } },
+        incident: true,
+      },
+    });
+
+    recordEvent({
+      ticketId: ticket.id,
+      action: "ticket_created",
+      actor: req.user,
+      payload: { source: "outreach", severity, category },
+    });
+
+    emitTicketEvent("created", ticket.id);
+
+    res.json(ticket);
+  } catch (error) {
+    console.error("Failed to create outreach ticket:", error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Failed to create outreach ticket",
+    });
+  }
 });
 
 // ─── DELETE /api/tickets/:id (admin only) ───────────────────

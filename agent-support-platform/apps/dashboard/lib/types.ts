@@ -129,7 +129,6 @@ export interface BotConversation {
 export interface TicketDetail extends Ticket {
   suggestedResolutions: SuggestedResolution[];
   botConversation: BotConversation | null;
-  resolutionSummary: string | null;
   notes: Note[];
   events: AuditEvent[];
 }
@@ -146,9 +145,10 @@ export interface Ticket {
   slaFirstResponseDeadline: string | null;
   createdAt: string;
   resolvedAt: string | null;
+  resolutionSummary: string | null;
   agent: Agent;
   messages: Message[];
-  incident: { id: string; title: string } | null;
+  incident: { id: string; title: string; ticketCount?: number } | null;
 }
 
 export interface TicketListResponse {

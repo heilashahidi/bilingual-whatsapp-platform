@@ -39,13 +39,8 @@ export function SlaTimer({
   // Fill fraction: 0 when fresh, 1 when overdue.
   // We anchor "full ring" to 4 hours of SLA window — past that, ring is
   // mostly empty and reads as "plenty of time".
-  //
-  // Clamp to [0, 1] so deadlines >4h away don't produce a negative
-  // dasharray (which some browsers render as a solid ring instead of empty).
   const windowSec = 4 * 60 * 60;
-  const fill = overdue
-    ? 1
-    : Math.max(0, Math.min(1, 1 - diffMs / (windowSec * 1000)));
+  const fill = overdue ? 1 : Math.min(1, 1 - diffMs / (windowSec * 1000));
 
   const tone = colorFor(diffMs);
   const stroke = 1.8;
