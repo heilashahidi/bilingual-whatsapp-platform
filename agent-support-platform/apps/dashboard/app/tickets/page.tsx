@@ -1,14 +1,16 @@
 import { fetchTickets } from "@/lib/api";
+import { getServerApiToken } from "@/lib/auth-server";
 import { RealtimeRefresh } from "@/lib/realtime-refresh";
 import { KanbanBoard } from "./_components/kanban-board";
 
 export const dynamic = "force-dynamic";
 
 export default async function TicketsPage() {
+  const token = await getServerApiToken();
   let data;
   let error: string | null = null;
   try {
-    data = await fetchTickets({ limit: 200 });
+    data = await fetchTickets({ limit: 200 }, token);
   } catch (e) {
     error = e instanceof Error ? e.message : "Unknown error";
   }

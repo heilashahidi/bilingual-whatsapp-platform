@@ -1,3 +1,4 @@
+import { getClientAuthToken } from "./auth-client";
 import type {
   InternalUser,
   Message,
@@ -12,12 +13,23 @@ import type {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
-export async function fetchTickets(params?: {
-  status?: string;
-  severity?: string;
-  country?: string;
-  limit?: number;
-}): Promise<TicketListResponse> {
+// Resolves a Bearer header: prefer an explicitly-passed token (server
+// components pass theirs from cookies), otherwise auto-fetch via the
+// client-side endpoint when running in the browser.
+async function authHeaders(token?: string): Promise<HeadersInit> {
+  const t = token ?? (typeof window !== "undefined" ? await getClientAuthToken() : undefined);
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
+export async function fetchTickets(
+  params?: {
+    status?: string;
+    severity?: string;
+    country?: string;
+    limit?: number;
+  },
+  token?: string
+): Promise<TicketListResponse> {
   const search = new URLSearchParams();
   if (params?.status) search.set("status", params.status);
   if (params?.severity) search.set("severity", params.severity);
@@ -26,7 +38,10 @@ export async function fetchTickets(params?: {
 
   const res = await fetch(
     `${API_URL}/api/tickets${search.toString() ? `?${search}` : ""}`,
-    { cache: "no-store" }
+    {
+      headers: await authHeaders(token),
+      cache: "no-store",
+    }
   );
   if (!res.ok) {
     throw new Error(`Failed to fetch tickets: ${res.status} ${res.statusText}`);
@@ -34,8 +49,14 @@ export async function fetchTickets(params?: {
   return res.json();
 }
 
-export async function fetchTicket(id: string): Promise<TicketDetail> {
-  const res = await fetch(`${API_URL}/api/tickets/${id}`, { cache: "no-store" });
+export async function fetchTicket(
+  id: string,
+  token?: string
+): Promise<TicketDetail> {
+  const res = await fetch(`${API_URL}/api/tickets/${id}`, {
+    headers: await authHeaders(token),
+    cache: "no-store",
+  });
   if (!res.ok) {
     throw new Error(`Failed to fetch ticket ${id}: ${res.status}`);
   }
@@ -48,7 +69,10 @@ export async function sendResponse(
 ): Promise<{ message: Message; translatedText: string }> {
   const res = await fetch(`${API_URL}/api/tickets/${ticketId}/messages`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(await authHeaders()),
+    },
     body: JSON.stringify({ text }),
   });
   if (!res.ok) {
@@ -72,7 +96,10 @@ export async function updateTicket(
 ): Promise<Ticket> {
   const res = await fetch(`${API_URL}/api/tickets/${ticketId}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(await authHeaders()),
+    },
     body: JSON.stringify(patch),
   });
   if (!res.ok) {
@@ -88,7 +115,10 @@ export async function resolveTicket(
 ): Promise<Ticket> {
   const res = await fetch(`${API_URL}/api/tickets/${ticketId}/resolve`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(await authHeaders()),
+    },
     body: JSON.stringify({ resolutionSummary }),
   });
   if (!res.ok) {
@@ -104,7 +134,10 @@ export async function createNote(
 ): Promise<Note> {
   const res = await fetch(`${API_URL}/api/tickets/${ticketId}/notes`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(await authHeaders()),
+    },
     body: JSON.stringify({ text }),
   });
   if (!res.ok) {
@@ -114,8 +147,11 @@ export async function createNote(
   return res.json();
 }
 
-export async function fetchUsers(): Promise<InternalUser[]> {
-  const res = await fetch(`${API_URL}/api/users`, { cache: "no-store" });
+export async function fetchUsers(token?: string): Promise<InternalUser[]> {
+  const res = await fetch(`${API_URL}/api/users`, {
+    headers: await authHeaders(token),
+    cache: "no-store",
+  });
   if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`);
   const data = (await res.json()) as { users: InternalUser[] };
   return data.users;

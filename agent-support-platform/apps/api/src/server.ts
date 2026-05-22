@@ -8,6 +8,7 @@ import { agentRouter } from "./routes/agents";
 import { userRouter } from "./routes/users";
 import { prisma } from "./services/database";
 import { initRealtime } from "./services/realtime";
+import { requireAuth } from "./middleware/auth";
 
 dotenv.config();
 
@@ -34,10 +35,16 @@ app.get("/health", async (_req, res) => {
 
 // ─── Routes ─────────────────────────────────────────────────
 
+// Webhooks stay open — they use Twilio signature validation instead of JWT.
 app.use("/webhooks", webhookRouter);
-app.use("/api/tickets", ticketRouter);
-app.use("/api/agents", agentRouter);
+
+// All /api/* routes require a valid NextAuth-issued Bearer token.
+// /api/users is the one exception: NextAuth's signIn callback needs to
+// look up emails on the InternalUser table BEFORE a session exists,
+// so we keep it accessible. It returns only id/name/email/role — no PII.
 app.use("/api/users", userRouter);
+app.use("/api/tickets", requireAuth, ticketRouter);
+app.use("/api/agents", requireAuth, agentRouter);
 
 // ─── Start ──────────────────────────────────────────────────
 

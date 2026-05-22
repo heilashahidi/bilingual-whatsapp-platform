@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchTicket, fetchUsers } from "@/lib/api";
+import { getServerApiToken } from "@/lib/auth-server";
 import { RealtimeRefresh } from "@/lib/realtime-refresh";
 import type { Message, Severity, TicketStatus } from "@/lib/types";
 import { NotesPanel } from "./notes-panel";
@@ -154,16 +155,17 @@ export default async function TicketDetailPage({
 }: {
   params: { id: string };
 }) {
+  const token = await getServerApiToken();
   let ticket;
   try {
-    ticket = await fetchTicket(params.id);
+    ticket = await fetchTicket(params.id, token);
   } catch (e) {
     if (e instanceof Error && e.message.includes("404")) {
       notFound();
     }
     throw e;
   }
-  const users = await fetchUsers().catch(() => []);
+  const users = await fetchUsers(token).catch(() => []);
 
   // Auto-generated header summary: first inbound message, trimmed.
   const firstInbound = ticket.messages.find((m) => m.direction === "inbound");
