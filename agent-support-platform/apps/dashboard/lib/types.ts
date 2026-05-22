@@ -94,6 +94,7 @@ export interface Ticket {
   agentReportedAt: string | null;
   slaFirstResponseDeadline: string | null;
   createdAt: string;
+  resolvedAt: string | null;
   agent: Agent;
   messages: Message[];
   incident: { id: string; title: string } | null;

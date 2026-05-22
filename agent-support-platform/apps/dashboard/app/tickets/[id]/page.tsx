@@ -23,6 +23,17 @@ const statusStyles: Record<TicketStatus, string> = {
   closed: "bg-slate-100 text-slate-600",
 };
 
+function formatRelative(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
     month: "short",
@@ -122,8 +133,20 @@ export default async function TicketDetailPage({
   }
   const users = await fetchUsers().catch(() => []);
 
+  // Auto-generated header summary: first inbound message, trimmed.
+  const firstInbound = ticket.messages.find((m) => m.direction === "inbound");
+  const summary =
+    (firstInbound?.translatedText || firstInbound?.originalText || ticket.category)
+      .replace(/\s+/g, " ")
+      .trim();
+  const shortId = ticket.id.slice(0, 8);
+  const isResolved = ticket.status === "resolved" || ticket.status === "closed";
+  const resolvedAgo = ticket.resolvedAt
+    ? formatRelative(ticket.resolvedAt)
+    : null;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <RealtimeRefresh ticketId={ticket.id} />
       <div>
         <Link
@@ -134,27 +157,63 @@ export default async function TicketDetailPage({
         </Link>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${severityStyles[ticket.severity]}`}
-        >
-          {ticket.severity}
-        </span>
-        <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-xs ${statusStyles[ticket.status]}`}
-        >
-          {ticket.status.replace(/_/g, " ")}
-        </span>
-        <span className="text-sm text-slate-500">{ticket.category}</span>
-        {ticket.productArea && (
-          <span className="text-sm text-slate-500">· {ticket.productArea}</span>
-        )}
-        {ticket.incident && (
-          <span className="rounded bg-rose-100 px-2 py-0.5 text-xs text-rose-800">
-            incident: {ticket.incident.title}
-          </span>
-        )}
+      {/* Header: summary + meta */}
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold text-slate-900 line-clamp-2">
+              {summary.length > 110 ? summary.slice(0, 110) + "…" : summary}
+            </h1>
+            <div className="mt-1 text-xs text-slate-500 font-mono">
+              #{shortId}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <span
+              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${severityStyles[ticket.severity]}`}
+            >
+              {ticket.severity}
+            </span>
+            <span
+              className={`inline-flex rounded-full px-2 py-0.5 text-xs ${statusStyles[ticket.status]}`}
+            >
+              {ticket.status.replace(/_/g, " ")}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500">
+          <span>{ticket.category.replace(/_/g, " ")}</span>
+          {ticket.productArea && <span>· {ticket.productArea}</span>}
+          {ticket.incident && (
+            <span className="rounded bg-rose-100 px-2 py-0.5 text-xs text-rose-800">
+              incident: {ticket.incident.title}
+            </span>
+          )}
+        </div>
       </div>
+
+      {/* Resolved banner */}
+      {isResolved && (
+        <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white">
+            ✓
+          </div>
+          <div className="flex-1 text-sm">
+            <span className="font-medium text-emerald-900">
+              {ticket.status === "closed" ? "Closed" : "Resolved"}
+            </span>
+            {resolvedAgo && (
+              <span className="text-emerald-700"> · {resolvedAgo}</span>
+            )}
+            {ticket.resolutionSummary && (
+              <div className="mt-1 text-xs text-emerald-800">
+                {ticket.resolutionSummary}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
