@@ -93,6 +93,7 @@ export interface AuditEvent {
 export interface Note {
   id: string;
   text: string;
+  mentions: string[];
   createdAt: string;
   authorId: string | null;
   author: { id: string; name: string; role: string } | null;

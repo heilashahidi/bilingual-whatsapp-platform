@@ -25,7 +25,7 @@ export default async function TicketDetailPage({
   const users = await fetchUsers(token).catch(() => []);
 
   return (
-    <>
+    <div className="mx-auto max-w-7xl">
       <RealtimeRefresh ticketId={ticket.id} />
       <div className="mb-3">
         <Link
@@ -36,6 +36,6 @@ export default async function TicketDetailPage({
         </Link>
       </div>
       <TicketDetailView ticket={ticket} users={users} />
-    </>
+    </div>
   );
 }

@@ -1,3 +1,4 @@
+import { prisma } from "./database";
 import { sendSlackMessage } from "../integrations/slack";
 
 // Translates platform events into Slack pings. Each function is fire-
@@ -9,6 +10,67 @@ const SEVERITY_EMOJI: Record<string, string> = {
   medium: "📢",
   low: "ℹ️",
 };
+
+// Fires when someone @-mentions a teammate in an internal note. Posts a
+// formatted Slack message naming the mentioned user + author + snippet.
+// Skipped silently when no mentions or when the mentioned users can't be
+// found in InternalUser.
+
+export async function notifyMention(input: {
+  ticketId: string;
+  noteId: string;
+  authorEmail: string | null;
+  authorName: string | null;
+  mentionedUserIds: string[];
+  snippet: string;
+}): Promise<void> {
+  if (input.mentionedUserIds.length === 0) return;
+
+  const users = await prisma.internalUser.findMany({
+    where: { id: { in: input.mentionedUserIds } },
+    select: { id: true, name: true, email: true },
+  });
+  if (users.length === 0) return;
+
+  const dashboardUrl = process.env.DASHBOARD_BASE_URL
+    ? `${process.env.DASHBOARD_BASE_URL}/tickets?ticket=${input.ticketId}`
+    : null;
+
+  const mentionedList = users.map((u) => u.name).join(", ");
+  const author = input.authorName || input.authorEmail || "Someone";
+  const text = `📣 ${author} mentioned ${mentionedList}: "${input.snippet.slice(0, 200)}"`;
+
+  await sendSlackMessage({
+    text,
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `📣 *${author}* mentioned *${mentionedList}* in an internal note`,
+        },
+      },
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: `> ${input.snippet.slice(0, 500)}` },
+      },
+      ...(dashboardUrl
+        ? [
+            {
+              type: "actions",
+              elements: [
+                {
+                  type: "button",
+                  text: { type: "plain_text", text: "Open ticket" },
+                  url: dashboardUrl,
+                },
+              ],
+            },
+          ]
+        : []),
+    ],
+  });
+}
 
 export async function notifyNewTicket(input: {
   ticketId: string;

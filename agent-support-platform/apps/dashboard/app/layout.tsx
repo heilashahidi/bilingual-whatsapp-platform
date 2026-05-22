@@ -20,7 +20,7 @@ export default function RootLayout({
       <body>
         <AuthSessionProvider>
           <header className="border-b border-slate-200 bg-white">
-            <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+            <div className="flex items-center justify-between px-6 py-4">
               <div className="flex items-center gap-6">
                 <Link href="/" className="text-lg font-semibold tracking-tight">
                   Agent Support
@@ -37,7 +37,11 @@ export default function RootLayout({
               <UserMenu />
             </div>
           </header>
-          <main className="mx-auto max-w-7xl px-6 py-8">{children}</main>
+          {/* No global max-width — pages handle their own container width.
+              The inbox view fills the whole viewport; tickets/[id] and
+              /knowledge constrain themselves so long-form text stays
+              readable. */}
+          <main className="px-6 py-6">{children}</main>
           <ToastContainer />
         </AuthSessionProvider>
       </body>

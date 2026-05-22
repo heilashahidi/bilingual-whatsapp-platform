@@ -34,12 +34,22 @@ export function PageHeader({
       </div>
 
       <div className="flex items-center gap-2">
-        {/* View toggle — kanban / list */}
+        {/* View toggle — inbox (Front-style three-pane) / kanban / list */}
         <Segmented
           ariaLabel="View"
           value={prefs.view}
           onChange={(v) => onPrefsChange({ view: v as UiPrefs["view"] })}
           options={[
+            {
+              value: "inbox",
+              label: "Inbox",
+              icon: (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+                  <path d="M3 7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z" />
+                  <path d="M3 13h5l1 2h6l1-2h5" />
+                </svg>
+              ),
+            },
             {
               value: "kanban",
               label: "Kanban",

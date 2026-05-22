@@ -50,7 +50,7 @@ export default async function KnowledgePage({
   const draftCount = articles.filter((a) => a.status === "draft").length;
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold">Knowledge base</h1>
         <span className="text-sm text-slate-500">

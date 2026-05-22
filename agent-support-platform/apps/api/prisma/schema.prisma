@@ -180,6 +180,10 @@ model Note {
   authorId  String?
   author    InternalUser? @relation(fields: [authorId], references: [id])
   text      String
+  // Array of InternalUser IDs mentioned with @name in the note body.
+  // The text itself stays unchanged ("@Jean asked about this") — this
+  // array powers the notification fan-out and the rendered highlights.
+  mentions  String[]      @default([])
   createdAt DateTime      @default(now())
 }
 

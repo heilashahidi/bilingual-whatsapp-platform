@@ -143,7 +143,8 @@ export async function deleteTicket(ticketId: string): Promise<void> {
 
 export async function createNote(
   ticketId: string,
-  text: string
+  text: string,
+  mentions: string[] = []
 ): Promise<Note> {
   const res = await fetch(`${API_URL}/api/tickets/${ticketId}/notes`, {
     method: "POST",
@@ -151,7 +152,7 @@ export async function createNote(
       "Content-Type": "application/json",
       ...(await authHeaders()),
     },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, mentions }),
   });
   if (!res.ok) {
     const body = await res.text();

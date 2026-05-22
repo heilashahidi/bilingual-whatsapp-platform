@@ -4,6 +4,7 @@ import { prisma } from "../services/database";
 import { emitTicketEvent } from "../services/realtime";
 import { indexResolvedTicket } from "../services/kb-indexer";
 import { recordEvent } from "../services/audit";
+import { notifyMention } from "../services/notifier";
 import { sendAgentResponse } from "../integrations/whatsapp";
 import { requireRole } from "../middleware/auth";
 
@@ -257,22 +258,38 @@ router.patch("/:id", async (req: Request, res: Response) => {
 // Add an internal team-only note. Never sent to the agent.
 
 router.post("/:id/notes", async (req: Request, res: Response) => {
-  const { text, authorId } = req.body;
+  const { text, authorId, mentions } = req.body;
 
   if (!text || typeof text !== "string" || !text.trim()) {
     return res.status(400).json({ error: "text is required" });
   }
+
+  // Normalize mentions: must be an array of strings (InternalUser IDs).
+  // We don't trust the client's list — verify each ID actually exists.
+  const requestedMentions = Array.isArray(mentions)
+    ? mentions.filter((m): m is string => typeof m === "string")
+    : [];
 
   const ticket = await prisma.ticket.findUnique({ where: { id: req.params.id } });
   if (!ticket) {
     return res.status(404).json({ error: "Ticket not found" });
   }
 
+  const validMentions = requestedMentions.length
+    ? (
+        await prisma.internalUser.findMany({
+          where: { id: { in: requestedMentions } },
+          select: { id: true },
+        })
+      ).map((u) => u.id)
+    : [];
+
   const note = await prisma.note.create({
     data: {
       ticketId: req.params.id,
       authorId: authorId || null,
       text: text.trim(),
+      mentions: validMentions,
     },
     include: { author: { select: { id: true, name: true, role: true } } },
   });
@@ -281,8 +298,24 @@ router.post("/:id/notes", async (req: Request, res: Response) => {
     ticketId: req.params.id,
     action: "note_added",
     actor: req.user,
-    payload: { noteId: note.id, snippet: text.trim().slice(0, 80) },
+    payload: {
+      noteId: note.id,
+      snippet: text.trim().slice(0, 80),
+      mentionCount: validMentions.length,
+    },
   });
+
+  // Fire-and-forget Slack ping for each mentioned teammate
+  if (validMentions.length) {
+    notifyMention({
+      ticketId: req.params.id,
+      noteId: note.id,
+      authorEmail: req.user?.email ?? null,
+      authorName: req.user?.name ?? null,
+      mentionedUserIds: validMentions,
+      snippet: text.trim(),
+    }).catch((err) => console.error("  ✗ mention notification failed:", err));
+  }
 
   emitTicketEvent("updated", req.params.id);
 

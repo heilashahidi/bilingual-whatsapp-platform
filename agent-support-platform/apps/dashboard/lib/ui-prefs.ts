@@ -11,7 +11,10 @@ import { useEffect, useState } from "react";
 // /api/me/preferences and keep the hook shape identical.
 
 export type DensityPref = "comfortable" | "compact";
-export type ViewPref = "kanban" | "list";
+// "inbox" is the new Front-style three-pane default. "kanban" stays as
+// an alternate. "list" is retained for users who want the wide tabular
+// view without the right-pane detail.
+export type ViewPref = "inbox" | "kanban" | "list";
 
 export interface UiPrefs {
   density: DensityPref;
@@ -22,10 +25,13 @@ export interface UiPrefs {
 const DEFAULTS: UiPrefs = {
   density: "comfortable",
   bilingual: true,
-  view: "kanban",
+  view: "inbox",
 };
 
-const STORAGE_KEY = "tickets.uiPrefs.v1";
+// v2 bumps the storage key so users with old "kanban" defaults get reset
+// to the new inbox default. Their density/bilingual prefs aren't worth
+// keeping across this layout change.
+const STORAGE_KEY = "tickets.uiPrefs.v2";
 
 function readStorage(): UiPrefs {
   if (typeof window === "undefined") return DEFAULTS;

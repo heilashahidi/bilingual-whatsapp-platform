@@ -1,18 +1,113 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createNote, sendResponse } from "@/lib/api";
+import type { InternalUser } from "@/lib/types";
 
 type Mode = "reply" | "note";
 
-export function ResponseComposer({ ticketId }: { ticketId: string }) {
+export function ResponseComposer({
+  ticketId,
+  users = [],
+}: {
+  ticketId: string;
+  users?: InternalUser[];
+}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("reply");
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+
+  // Mentions: maps the literal "@FullName" substring → user id. Stored as
+  // a set of ids so duplicates collapse. We re-scan the text on submit to
+  // only send mentions whose @FullName is still in the body.
+  const [mentions, setMentions] = useState<Map<string, string>>(new Map());
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [pickerAnchor, setPickerAnchor] = useState<{ start: number; end: number } | null>(null);
+  const [pickerIndex, setPickerIndex] = useState(0);
+
+  // Filter users by name fuzzy match against the current @-token
+  const pickerResults = useMemo(() => {
+    if (!pickerOpen) return [];
+    const q = pickerQuery.trim().toLowerCase();
+    const list = q
+      ? users.filter((u) => u.name.toLowerCase().includes(q))
+      : users;
+    return list.slice(0, 6);
+  }, [pickerOpen, pickerQuery, users]);
+
+  function handleTextareaChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const value = e.target.value;
+    setText(value);
+    if (mode !== "note") return;
+
+    // Look back from cursor for an @-token. The token starts at the most
+    // recent "@" that's preceded by start-of-string or whitespace, and
+    // continues until the cursor or the next whitespace.
+    const pos = e.target.selectionStart ?? value.length;
+    const before = value.slice(0, pos);
+    const atIdx = before.lastIndexOf("@");
+
+    if (atIdx === -1) {
+      setPickerOpen(false);
+      return;
+    }
+    const charBeforeAt = atIdx === 0 ? "" : before[atIdx - 1];
+    if (charBeforeAt && !/\s/.test(charBeforeAt)) {
+      // mid-word @ (e.g. "user@example.com"); ignore
+      setPickerOpen(false);
+      return;
+    }
+    const token = before.slice(atIdx + 1);
+    if (/\s/.test(token)) {
+      // there's whitespace between @ and cursor — popup should have closed
+      setPickerOpen(false);
+      return;
+    }
+    setPickerQuery(token);
+    setPickerAnchor({ start: atIdx, end: pos });
+    setPickerIndex(0);
+    setPickerOpen(true);
+  }
+
+  function pickMention(user: InternalUser) {
+    if (!pickerAnchor) return;
+    const replacement = `@${user.name} `;
+    const next =
+      text.slice(0, pickerAnchor.start) +
+      replacement +
+      text.slice(pickerAnchor.end);
+    setText(next);
+    setMentions((prev) => {
+      const m = new Map(prev);
+      m.set(`@${user.name}`, user.id);
+      return m;
+    });
+    setPickerOpen(false);
+    // Refocus textarea and place cursor after the inserted mention
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (ta) {
+        const cursor = pickerAnchor.start + replacement.length;
+        ta.focus();
+        ta.setSelectionRange(cursor, cursor);
+      }
+    });
+  }
+
+  // On submit, only send mention IDs that are still present in the text.
+  function activeMentionIds(): string[] {
+    const ids = new Set<string>();
+    for (const [marker, id] of mentions) {
+      if (text.includes(marker)) ids.add(id);
+    }
+    return Array.from(ids);
+  }
 
   async function handleSubmit() {
     if (!text.trim() || sending) return;
@@ -24,9 +119,10 @@ export function ResponseComposer({ ticketId }: { ticketId: string }) {
         const result = await sendResponse(ticketId, text.trim());
         setPreview(result.translatedText);
       } else {
-        await createNote(ticketId, text.trim());
+        await createNote(ticketId, text.trim(), activeMentionIds());
       }
       setText("");
+      setMentions(new Map());
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Submit failed");
@@ -35,9 +131,41 @@ export function ResponseComposer({ ticketId }: { ticketId: string }) {
     }
   }
 
-  // Distinct visual states reduce the risk of someone typing a note thinking
-  // it's a reply (or vice versa). Note mode is amber across the entire
-  // composer; reply mode is slate.
+  // ESC closes the picker; arrows/enter navigate it
+  function onTextareaKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (pickerOpen && pickerResults.length > 0) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setPickerOpen(false);
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setPickerIndex((i) => Math.min(pickerResults.length - 1, i + 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setPickerIndex((i) => Math.max(0, i - 1));
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        pickMention(pickerResults[pickerIndex]);
+        return;
+      }
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      handleSubmit();
+    }
+  }
+
+  // Close picker on mode switch
+  useEffect(() => {
+    setPickerOpen(false);
+  }, [mode]);
+
   const isNote = mode === "note";
   const wrapperClass = isNote
     ? "rounded-lg border border-amber-300 bg-amber-50 p-4"
@@ -51,16 +179,11 @@ export function ResponseComposer({ ticketId }: { ticketId: string }) {
 
   return (
     <div className={wrapperClass}>
-      {/* Mode tabs */}
       <div className="mb-3 flex gap-1 border-b border-slate-200">
         <TabButton active={!isNote} onClick={() => setMode("reply")}>
           Reply to agent
         </TabButton>
-        <TabButton
-          active={isNote}
-          accent="amber"
-          onClick={() => setMode("note")}
-        >
+        <TabButton active={isNote} accent="amber" onClick={() => setMode("note")}>
           Internal note
         </TabButton>
       </div>
@@ -71,29 +194,55 @@ export function ResponseComposer({ ticketId }: { ticketId: string }) {
         }`}
       >
         {isNote
-          ? "Team-only note — never sent to the agent"
+          ? "Team-only note — type @ to mention a teammate"
           : "Reply (English — will be translated for the agent)"}
       </label>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={3}
-        placeholder={isNote ? "Add a note for the team…" : "Type your reply in English…"}
-        className={textareaClass}
-        disabled={sending}
-        onKeyDown={(e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-            e.preventDefault();
-            handleSubmit();
+
+      <div className="relative">
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={handleTextareaChange}
+          rows={3}
+          placeholder={
+            isNote
+              ? "Add a note for the team… type @ to mention someone"
+              : "Type your reply in English…"
           }
-        }}
-      />
+          className={textareaClass}
+          disabled={sending}
+          onKeyDown={onTextareaKeyDown}
+        />
+
+        {pickerOpen && pickerResults.length > 0 && (
+          <div className="absolute left-2 right-2 top-full z-20 mt-1 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+            {pickerResults.map((u, i) => (
+              <button
+                key={u.id}
+                type="button"
+                onMouseDown={(e) => {
+                  // mousedown to fire BEFORE blur, so the textarea keeps focus context
+                  e.preventDefault();
+                  pickMention(u);
+                }}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] ${
+                  i === pickerIndex
+                    ? "bg-amber-100 text-amber-900"
+                    : "text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <span className="font-medium">{u.name}</span>
+                <span className="text-[11px] text-slate-500">{u.role}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="mt-3 flex items-center justify-between">
         <div className={`text-xs ${isNote ? "text-amber-800/80" : "text-slate-500"}`}>
           {sending
-            ? isNote
-              ? "Saving…"
-              : "Sending…"
+            ? isNote ? "Saving…" : "Sending…"
             : "⌘/Ctrl + Enter to submit"}
         </div>
         <button

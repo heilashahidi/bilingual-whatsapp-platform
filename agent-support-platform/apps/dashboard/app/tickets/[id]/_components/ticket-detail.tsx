@@ -94,6 +94,32 @@ function DeliveryStatus({ message }: { message: Message }) {
   );
 }
 
+// Tokenize a note body so that @FullName segments render as bold pills.
+// Matches "@" followed by capitalized words separated by single spaces,
+// up to 3 words deep (covers "@Jean", "@Jean-Baptiste Pierre", "@Maria
+// Carmen Diaz"). Conservative on purpose — false matches are minor.
+function renderWithMentions(text: string): React.ReactNode[] {
+  const pattern = /@[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}/g;
+  const out: React.ReactNode[] = [];
+  let lastIdx = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIdx) out.push(text.slice(lastIdx, match.index));
+    out.push(
+      <span
+        key={`m-${key++}`}
+        className="rounded bg-amber-200/70 px-1 font-semibold text-amber-900"
+      >
+        {match[0]}
+      </span>
+    );
+    lastIdx = match.index + match[0].length;
+  }
+  if (lastIdx < text.length) out.push(text.slice(lastIdx));
+  return out;
+}
+
 function NoteBubble({ note }: { note: Note }) {
   return (
     <div className="flex justify-center">
@@ -112,7 +138,7 @@ function NoteBubble({ note }: { note: Note }) {
           </span>
         </div>
         <div className="whitespace-pre-wrap text-sm text-amber-950">
-          {note.text}
+          {renderWithMentions(note.text)}
         </div>
       </div>
     </div>
@@ -284,7 +310,7 @@ export function TicketDetailView({
             </div>
           </div>
 
-          <ResponseComposer ticketId={ticket.id} />
+          <ResponseComposer ticketId={ticket.id} users={users} />
         </div>
 
         <aside className="space-y-4">

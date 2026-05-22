@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { fetchTicket, fetchUsers } from "@/lib/api";
-import { RealtimeRefresh } from "@/lib/realtime-refresh";
+import { getSocket, type TicketChangedEvent } from "@/lib/socket";
 import type { InternalUser, TicketDetail } from "@/lib/types";
 import { TicketDetailView } from "../[id]/_components/ticket-detail";
 
@@ -66,6 +66,25 @@ export function TicketDrawer() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticketId]);
+
+  // Live updates: refetch when this ticket is mutated server-side
+  // (assignment, severity change, new note, new message, etc.).
+  useEffect(() => {
+    if (!ticketId) return;
+    const socket = getSocket();
+    const handler = (event: TicketChangedEvent) => {
+      if (event.ticketId !== ticketId) return;
+      fetchTicket(ticketId)
+        .then((t) => setTicket(t))
+        .catch(() => {
+          /* leave stale view rather than blank out */
+        });
+    };
+    socket.on("ticket:changed", handler);
+    return () => {
+      socket.off("ticket:changed", handler);
+    };
   }, [ticketId]);
 
   // ESC closes the drawer
@@ -149,12 +168,7 @@ export function TicketDrawer() {
               {error}
             </div>
           )}
-          {ticket && (
-            <>
-              <RealtimeRefresh ticketId={ticket.id} />
-              <TicketDetailView ticket={ticket} users={users} />
-            </>
-          )}
+          {ticket && <TicketDetailView ticket={ticket} users={users} />}
         </div>
       </div>
     </div>
