@@ -86,7 +86,7 @@ router.post("/whatsapp/status", async (req: Request, res: Response) => {
 
     if (Object.keys(updateData).length === 0) return;
 
-    const message = await prisma.message.findFirst({
+    const message = await prisma.message.findUnique({
       where: { whatsappMessageId: MessageSid },
       select: { id: true, ticketId: true, deliveredAt: true, readAt: true },
     });

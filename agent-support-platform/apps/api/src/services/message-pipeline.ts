@@ -14,7 +14,7 @@ import { classifyMessage } from "../integrations/classification";
  */
 export async function processInboundMessage(raw: RawMessage): Promise<void> {
   // ─── Step 1: Idempotency check ─────────────────────────────
-  const existing = await prisma.message.findFirst({
+  const existing = await prisma.message.findUnique({
     where: { whatsappMessageId: raw.externalId },
   });
   if (existing) {
