@@ -127,12 +127,26 @@ router.post("/:id/messages", async (req: Request, res: Response) => {
     return res.status(404).json({ error: "Ticket not found" });
   }
 
+  // Resolve the target language from the most recent inbound message
+  // rather than the agent's registration-time preferredLanguage. If the
+  // agent wrote this conversation in French (even though they registered
+  // as a Creole speaker), the reply tracks them. Falls back to
+  // preferredLanguage if no inbound message exists yet.
+  const lastInbound = await prisma.message.findFirst({
+    where: { ticketId: ticket.id, direction: "inbound" },
+    orderBy: { createdAt: "desc" },
+    select: { originalLanguage: true },
+  });
+  const targetLanguage =
+    lastInbound?.originalLanguage || ticket.agent.preferredLanguage;
+
   try {
-    // Translate and send via WhatsApp
+    // Translate (if needed) and send via WhatsApp. sendAgentResponse
+    // short-circuits translation when targetLanguage === "en".
     const { messageSid, translatedText } = await sendAgentResponse(
       ticket.agent.phoneNumber,
       text,
-      ticket.agent.preferredLanguage,
+      targetLanguage,
       ticket.agent.country
     );
 
@@ -164,7 +178,7 @@ router.post("/:id/messages", async (req: Request, res: Response) => {
       ticketId: ticket.id,
       action: "message_sent",
       actor: req.user,
-      payload: { translatedTo: ticket.agent.preferredLanguage },
+      payload: { translatedTo: targetLanguage },
     });
 
     emitTicketEvent("message", ticket.id);

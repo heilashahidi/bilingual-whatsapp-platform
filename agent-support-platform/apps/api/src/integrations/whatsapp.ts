@@ -58,8 +58,13 @@ export async function sendWhatsAppMessage(
 }
 
 /**
- * Send a response to an agent, handling the full flow:
- *   English text → translate → enforce country constraints → send via WhatsApp
+ * Send a response from the US team to a field agent.
+ *
+ * Translates the operator's English into the agent's language, enforces
+ * per-country length limits, and ships it through WhatsApp. If the agent
+ * is already writing in English, we skip the translation call entirely —
+ * sending it through Claude when source and target are both English just
+ * burns latency and occasionally rewrites the operator's wording.
  */
 export async function sendAgentResponse(
   toPhone: string,
@@ -67,9 +72,13 @@ export async function sendAgentResponse(
   agentLanguage: string,
   agentCountry: string
 ): Promise<{ messageSid: string; translatedText: string }> {
-  // Translate to agent's language
-  const translation = await translateResponse(englishText, agentLanguage);
-  let translatedText = translation.translatedText;
+  let translatedText = englishText;
+
+  if (agentLanguage && agentLanguage !== "en") {
+    // Translate to agent's language
+    const translation = await translateResponse(englishText, agentLanguage);
+    translatedText = translation.translatedText;
+  }
 
   // Enforce message length limits for low-bandwidth countries
   const maxLength = BOT_MAX_MESSAGE_LENGTH[agentCountry] || 2000;
