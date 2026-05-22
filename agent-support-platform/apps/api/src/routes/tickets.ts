@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../services/database";
+import { emitTicketEvent } from "../services/realtime";
 import { sendAgentResponse } from "../integrations/whatsapp";
 
 const router = Router();
@@ -122,6 +123,8 @@ router.post("/:id/messages", async (req: Request, res: Response) => {
       },
     });
 
+    emitTicketEvent("message", ticket.id);
+
     res.json({ message, translatedText });
   } catch (error) {
     console.error("Failed to send response:", error);
@@ -153,6 +156,8 @@ router.patch("/:id", async (req: Request, res: Response) => {
     include: { agent: true },
   });
 
+  emitTicketEvent("updated", ticket.id);
+
   res.json(ticket);
 });
 
@@ -175,6 +180,8 @@ router.post("/:id/resolve", async (req: Request, res: Response) => {
   // if (resolutionSummary) {
   //   await queueKBIndexer(ticket.id);
   // }
+
+  emitTicketEvent("updated", ticket.id);
 
   res.json(ticket);
 });

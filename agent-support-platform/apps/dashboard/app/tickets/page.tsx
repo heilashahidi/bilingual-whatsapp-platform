@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { fetchTickets } from "@/lib/api";
+import { RealtimeRefresh } from "@/lib/realtime-refresh";
 import type { Severity, TicketStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +55,7 @@ export default async function TicketsPage() {
 
   return (
     <div className="space-y-6">
+      <RealtimeRefresh />
       <div className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold">Tickets</h1>
         {data && (

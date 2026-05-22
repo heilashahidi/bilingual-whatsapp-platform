@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchTicket } from "@/lib/api";
+import { RealtimeRefresh } from "@/lib/realtime-refresh";
 import type { Message, Severity, TicketStatus } from "@/lib/types";
 import { ResponseComposer } from "./response-composer";
 
@@ -121,6 +122,7 @@ export default async function TicketDetailPage({
 
   return (
     <div className="space-y-6">
+      <RealtimeRefresh ticketId={ticket.id} />
       <div>
         <Link
           href="/tickets"

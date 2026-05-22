@@ -1,3 +1,4 @@
+import http from "node:http";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -5,6 +6,7 @@ import { webhookRouter } from "./routes/webhooks";
 import { ticketRouter } from "./routes/tickets";
 import { agentRouter } from "./routes/agents";
 import { prisma } from "./services/database";
+import { initRealtime } from "./services/realtime";
 
 dotenv.config();
 
@@ -37,8 +39,12 @@ app.use("/api/agents", agentRouter);
 
 // ─── Start ──────────────────────────────────────────────────
 
-app.listen(PORT, () => {
+const httpServer = http.createServer(app);
+initRealtime(httpServer);
+
+httpServer.listen(PORT, () => {
   console.log(`✓ API server running on http://localhost:${PORT}`);
+  console.log(`✓ Socket.IO ready on ws://localhost:${PORT}`);
   console.log(`✓ Twilio webhook URL: http://localhost:${PORT}/webhooks/whatsapp`);
   console.log(`  → Use ngrok to expose this for Twilio: ngrok http ${PORT}`);
 });

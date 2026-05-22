@@ -1,5 +1,6 @@
 import { RawMessage, EXTENDED_SLA_COUNTRIES, SLA_DEFAULTS } from "@asp/shared";
 import { prisma } from "./database";
+import { emitTicketEvent } from "./realtime";
 import { translateMessage } from "../integrations/translation";
 import { classifyMessage } from "../integrations/classification";
 
@@ -183,9 +184,11 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
 
   console.log(`  ✓ Stored message ${message.id} (delivery delay: ${deliveryDelay}s)`);
 
-  // ─── Step 7: Notify (placeholder) ──────────────────────────
+  // ─── Step 7: Realtime broadcast ────────────────────────────
+  emitTicketEvent(shouldCreateNew ? "created" : "message", ticket!.id);
+
+  // ─── Step 8: Notify (placeholder) ──────────────────────────
   // TODO: Push to notification queue
-  // TODO: WebSocket broadcast to dashboard
   // TODO: Incident clustering check
   // TODO: Knowledge base similarity search for suggested resolutions
 
