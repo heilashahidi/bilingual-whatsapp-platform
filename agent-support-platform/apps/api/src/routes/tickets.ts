@@ -1,0 +1,182 @@
+import { Router, Request, Response } from "express";
+import { prisma } from "../services/database";
+import { sendAgentResponse } from "../integrations/whatsapp";
+
+const router = Router();
+
+// ─── GET /api/tickets ───────────────────────────────────────
+// List tickets with filters, sorted by severity then SLA deadline
+
+router.get("/", async (req: Request, res: Response) => {
+  const {
+    status,
+    severity,
+    category,
+    country,
+    assignedTo,
+    limit = "50",
+    offset = "0",
+  } = req.query;
+
+  const where: any = {};
+  if (status) where.status = status;
+  if (severity) where.severity = severity;
+  if (category) where.category = category;
+  if (assignedTo) where.assignedTo = assignedTo;
+  if (country) where.agent = { country };
+
+  const tickets = await prisma.ticket.findMany({
+    where,
+    include: {
+      agent: { include: { branch: true } },
+      messages: { orderBy: { createdAt: "desc" }, take: 1 },
+      incident: true,
+    },
+    orderBy: [
+      { severity: "asc" }, // critical first
+      { slaFirstResponseDeadline: "asc" }, // nearest SLA deadline first
+    ],
+    take: parseInt(limit as string),
+    skip: parseInt(offset as string),
+  });
+
+  const total = await prisma.ticket.count({ where });
+
+  res.json({ tickets, total });
+});
+
+// ─── GET /api/tickets/:id ───────────────────────────────────
+// Full ticket detail with messages and suggested resolutions
+
+router.get("/:id", async (req: Request, res: Response) => {
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: req.params.id },
+    include: {
+      agent: { include: { branch: true } },
+      messages: { orderBy: { createdAt: "asc" } },
+      incident: true,
+      suggestedResolutions: {
+        include: { article: true },
+        orderBy: { similarityScore: "desc" },
+      },
+      botConversation: true,
+    },
+  });
+
+  if (!ticket) {
+    return res.status(404).json({ error: "Ticket not found" });
+  }
+
+  res.json(ticket);
+});
+
+// ─── POST /api/tickets/:id/messages ─────────────────────────
+// Send a response from the US team to the agent
+
+router.post("/:id/messages", async (req: Request, res: Response) => {
+  const { text, senderId } = req.body;
+
+  if (!text) {
+    return res.status(400).json({ error: "text is required" });
+  }
+
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: req.params.id },
+    include: { agent: true },
+  });
+
+  if (!ticket) {
+    return res.status(404).json({ error: "Ticket not found" });
+  }
+
+  try {
+    // Translate and send via WhatsApp
+    const { messageSid, translatedText } = await sendAgentResponse(
+      ticket.agent.phoneNumber,
+      text,
+      ticket.agent.preferredLanguage,
+      ticket.agent.country
+    );
+
+    // Store the outbound message
+    const message = await prisma.message.create({
+      data: {
+        ticketId: ticket.id,
+        direction: "outbound",
+        senderType: "internal_user",
+        senderId,
+        originalText: text,
+        originalLanguage: "en",
+        translatedText,
+        contentType: "text",
+        whatsappMessageId: messageSid,
+      },
+    });
+
+    // Update ticket status
+    await prisma.ticket.update({
+      where: { id: ticket.id },
+      data: {
+        status: "waiting_on_agent",
+        slaFirstResponseMet: ticket.slaFirstResponseMet === null ? true : ticket.slaFirstResponseMet,
+      },
+    });
+
+    res.json({ message, translatedText });
+  } catch (error) {
+    console.error("Failed to send response:", error);
+    res.status(500).json({ error: "Failed to send message" });
+  }
+});
+
+// ─── PATCH /api/tickets/:id ─────────────────────────────────
+// Update ticket metadata (status, severity, category, assignment, etc.)
+
+router.patch("/:id", async (req: Request, res: Response) => {
+  const { status, severity, category, assignedTo, tags, incidentId } = req.body;
+
+  const data: any = {};
+  if (status) data.status = status;
+  if (severity) data.severity = severity;
+  if (category) data.category = category;
+  if (assignedTo !== undefined) data.assignedTo = assignedTo;
+  if (tags) data.tags = tags;
+  if (incidentId !== undefined) data.incidentId = incidentId;
+
+  if (status === "resolved") {
+    data.resolvedAt = new Date();
+  }
+
+  const ticket = await prisma.ticket.update({
+    where: { id: req.params.id },
+    data,
+    include: { agent: true },
+  });
+
+  res.json(ticket);
+});
+
+// ─── POST /api/tickets/:id/resolve ──────────────────────────
+// Resolve a ticket with a resolution summary (feeds knowledge base)
+
+router.post("/:id/resolve", async (req: Request, res: Response) => {
+  const { resolutionSummary } = req.body;
+
+  const ticket = await prisma.ticket.update({
+    where: { id: req.params.id },
+    data: {
+      status: "resolved",
+      resolvedAt: new Date(),
+      resolutionSummary: resolutionSummary || null,
+    },
+  });
+
+  // TODO: Trigger knowledge base indexer worker
+  // if (resolutionSummary) {
+  //   await queueKBIndexer(ticket.id);
+  // }
+
+  res.json(ticket);
+});
+
+export { router as ticketRouter };

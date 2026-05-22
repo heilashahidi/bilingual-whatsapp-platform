@@ -1,0 +1,309 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Core Entities ───────────────────────────────────────────
+
+enum Country {
+  HT // Haiti
+  DO // Dominican Republic
+  CD // Democratic Republic of Congo
+}
+
+enum Language {
+  ht // Haitian Creole
+  fr // French
+  es // Spanish
+  en // English
+}
+
+enum ConnectivityStatus {
+  online
+  intermittent
+  offline
+  unknown
+}
+
+enum ConnectivityHealth {
+  healthy
+  degraded
+  outage
+}
+
+model Branch {
+  id                         String             @id @default(uuid())
+  name                       String
+  country                    Country
+  region                     String
+  latitude                   Float?
+  longitude                  Float?
+  connectivityHealth         ConnectivityHealth  @default(healthy)
+  connectivityHealthUpdatedAt DateTime?
+  createdAt                  DateTime           @default(now())
+  updatedAt                  DateTime           @updatedAt
+  agents                     Agent[]
+}
+
+model Agent {
+  id                  String             @id @default(uuid())
+  phoneNumber         String             @unique // E.164 format
+  name                String
+  country             Country
+  preferredLanguage   Language           @default(ht)
+  branchId            String
+  branch              Branch             @relation(fields: [branchId], references: [id])
+  connectivityStatus  ConnectivityStatus @default(unknown)
+  lastSeenAt          DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  tickets             Ticket[]
+  botConversations    BotConversation[]
+}
+
+// ─── Tickets & Messages ─────────────────────────────────────
+
+enum TicketStatus {
+  open
+  in_progress
+  waiting_on_agent
+  resolved
+  closed
+}
+
+enum TicketCategory {
+  bug_report
+  operational_complaint
+  feature_request
+  question
+  other
+}
+
+enum Severity {
+  critical
+  high
+  medium
+  low
+}
+
+enum MessageDirection {
+  inbound
+  outbound
+}
+
+enum SenderType {
+  agent
+  internal_user
+  system
+  bot
+}
+
+enum ContentType {
+  text
+  image
+  audio
+  video
+  document
+}
+
+model Ticket {
+  id                   String          @id @default(uuid())
+  agentId              String
+  agent                Agent           @relation(fields: [agentId], references: [id])
+  incidentId           String?
+  incident             Incident?       @relation(fields: [incidentId], references: [id])
+  status               TicketStatus    @default(open)
+  category             TicketCategory  @default(other)
+  severity             Severity        @default(medium)
+  productArea          String?
+  tags                 String[]        @default([])
+  assignedTo           String?
+  assignedUser         InternalUser?   @relation(fields: [assignedTo], references: [id])
+  resolutionSummary    String?
+  botAttempted         Boolean         @default(false)
+  botConversationId    String?
+  botConversation      BotConversation? @relation(fields: [botConversationId], references: [id])
+  slaFirstResponseDeadline DateTime?
+  slaResolutionDeadline    DateTime?
+  slaFirstResponseMet      Boolean?
+  slaResolutionMet         Boolean?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  resolvedAt           DateTime?
+  messages             Message[]
+  suggestedResolutions TicketSuggestedResolution[]
+
+  // Use agent_timestamp (WhatsApp send time), not server receipt time
+  agentReportedAt      DateTime?       // WhatsApp timestamp of first message
+}
+
+model Message {
+  id                     String           @id @default(uuid())
+  ticketId               String
+  ticket                 Ticket           @relation(fields: [ticketId], references: [id])
+  direction              MessageDirection
+  senderType             SenderType
+  senderId               String?
+  originalText           String?
+  originalLanguage       Language?
+  translatedText         String?
+  translationConfidence  Float?
+  contentType            ContentType      @default(text)
+  mediaUrls              String[]         @default([])
+  classification         Json?            // LLM classification output (inbound only)
+  // Dual timestamps for connectivity tracking
+  agentTimestamp         DateTime?        // When agent actually sent (from WhatsApp)
+  serverReceivedAt       DateTime?        // When webhook arrived at our server
+  deliveryDelay          Int?             // Delta in seconds (computed)
+  // Outbound delivery tracking
+  whatsappMessageId      String?          // WhatsApp message ID for delivery tracking
+  deliveredAt            DateTime?        // When delivery receipt received
+  readAt                 DateTime?        // When read receipt received
+  createdAt              DateTime         @default(now())
+}
+
+// ─── Internal Users ─────────────────────────────────────────
+
+enum UserRole {
+  admin
+  engineering
+  operations
+  support
+}
+
+model InternalUser {
+  id                      String    @id @default(uuid())
+  name                    String
+  email                   String    @unique
+  role                    UserRole  @default(support)
+  notificationPreferences Json?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  assignedTickets         Ticket[]
+}
+
+// ─── Incidents ──────────────────────────────────────────────
+
+enum IncidentStatus {
+  detected
+  confirmed
+  mitigating
+  resolved
+}
+
+model Incident {
+  id                String          @id @default(uuid())
+  title             String
+  status            IncidentStatus  @default(detected)
+  severity          Severity        @default(high)
+  category          TicketCategory?
+  productArea       String?
+  affectedCountries Country[]       @default([])
+  affectedBranches  String[]        @default([]) // branch IDs
+  isNetworkRelated  Boolean         @default(false) // Haiti/DRC connectivity distinction
+  rootCause         String?
+  resolutionNotes   String?
+  firstReportedAt   DateTime?
+  detectedAt        DateTime        @default(now())
+  resolvedAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  tickets           Ticket[]
+}
+
+// ─── Knowledge Base ─────────────────────────────────────────
+
+enum ArticleStatus {
+  draft
+  active
+  archived
+}
+
+model KnowledgeArticle {
+  id                         String        @id @default(uuid())
+  title                      String
+  problemDescription         String
+  resolutionText             String
+  resolutionTextShort        String?       // Under 500 chars, for Haiti/DRC bot delivery
+  resolutionTextTranslations Json?         // { ht: "...", fr: "...", es: "..." }
+  category                   TicketCategory?
+  productArea                String?
+  tags                       String[]      @default([])
+  sourceTicketIds            String[]      @default([])
+  embedding                  Unsupported("vector(1536)")? // pgvector
+  usageCount                 Int           @default(0)
+  successCount               Int           @default(0)
+  failureCount               Int           @default(0)
+  status                     ArticleStatus @default(draft)
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
+  suggestedOn                TicketSuggestedResolution[]
+}
+
+model TicketSuggestedResolution {
+  id                String           @id @default(uuid())
+  ticketId          String
+  ticket            Ticket           @relation(fields: [ticketId], references: [id])
+  articleId         String
+  article           KnowledgeArticle @relation(fields: [articleId], references: [id])
+  similarityScore   Float
+  wasUsed           Boolean          @default(false)
+  wasDismissed      Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+
+  @@unique([ticketId, articleId])
+}
+
+// ─── Bot ────────────────────────────────────────────────────
+
+enum BotOutcome {
+  resolved
+  escalated_to_ticket
+  expired
+}
+
+model BotConversation {
+  id                String      @id @default(uuid())
+  agentId           String
+  agent             Agent       @relation(fields: [agentId], references: [id])
+  outcome           BotOutcome?
+  escalatedTicketId String?
+  decisionTreeId    String?
+  decisionTree      DecisionTree? @relation(fields: [decisionTreeId], references: [id])
+  knowledgeArticleId String?
+  messages          Json?        // Array of { sender, text, timestamp }
+  startedAt         DateTime     @default(now())
+  endedAt           DateTime?
+  tickets           Ticket[]
+}
+
+model DecisionTree {
+  id                String            @id @default(uuid())
+  title             String
+  category          TicketCategory?
+  productArea       String?
+  steps             Json              // Tree structure of nodes
+  translations      Json?             // { ht: {...}, fr: {...}, es: {...} }
+  isActive          Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  botConversations  BotConversation[]
+}
+
+// ─── Connectivity Monitoring ────────────────────────────────
+
+model ConnectivityLog {
+  id        String   @id @default(uuid())
+  region    String
+  country   Country
+  medianDelay Int    // Median delivery delay in seconds over window
+  messageCount Int   // Number of messages in the window
+  health    ConnectivityHealth
+  windowStart DateTime
+  windowEnd   DateTime
+  createdAt DateTime @default(now())
+}
