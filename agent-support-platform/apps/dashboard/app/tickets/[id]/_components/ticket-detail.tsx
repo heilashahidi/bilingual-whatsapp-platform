@@ -148,6 +148,12 @@ function MessageBubble({ message }: { message: Message }) {
     isInbound &&
     typeof message.translationConfidence === "number" &&
     message.translationConfidence < 0.7;
+  // System messages are auto-sent by the platform (e.g., the
+  // category-aware intake checklist on new tickets). Render them
+  // with a slightly different palette + a small badge so operators
+  // can tell at a glance which messages they sent vs which the
+  // platform sent on their behalf.
+  const isSystem = !isInbound && message.senderType === "system";
 
   return (
     <div className={`flex ${isInbound ? "justify-start" : "justify-end"}`}>
@@ -155,14 +161,32 @@ function MessageBubble({ message }: { message: Message }) {
         className={`max-w-[75%] rounded-lg px-4 py-3 ${
           isInbound
             ? "bg-white ring-1 ring-slate-200"
-            : "bg-slate-900 text-white"
+            : isSystem
+              ? "bg-violet-50 text-violet-950 ring-1 ring-violet-200"
+              : "bg-slate-900 text-white"
         }`}
       >
         <div
           className={`mb-1 flex items-center gap-2 text-xs ${
-            isInbound ? "text-slate-500" : "text-slate-300"
+            isInbound
+              ? "text-slate-500"
+              : isSystem
+                ? "text-violet-700"
+                : "text-slate-300"
           }`}
         >
+          {isSystem && (
+            <span
+              className="inline-flex items-center gap-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700"
+              title="Sent automatically by the platform — typically an intake checklist on new tickets"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <rect x="3" y="7" width="18" height="13" rx="2" />
+                <path d="M9 7V4h6v3M9 13h.01M15 13h.01" strokeLinecap="round" />
+              </svg>
+              Auto-intake
+            </span>
+          )}
           <span className="font-medium">{senderLabel(message)}</span>
           <span>·</span>
           <span>{formatTime(message.createdAt)}</span>
@@ -183,7 +207,9 @@ function MessageBubble({ message }: { message: Message }) {
             className={`mt-2 border-t pt-2 text-xs ${
               isInbound
                 ? "border-slate-200 text-slate-500"
-                : "border-white/20 text-slate-300"
+                : isSystem
+                  ? "border-violet-200 text-violet-700"
+                  : "border-white/20 text-slate-300"
             }`}
           >
             <span className="font-medium">
@@ -195,7 +221,11 @@ function MessageBubble({ message }: { message: Message }) {
         {message.contentType !== "text" && (
           <div
             className={`mt-2 text-xs italic ${
-              isInbound ? "text-slate-500" : "text-slate-300"
+              isInbound
+                ? "text-slate-500"
+                : isSystem
+                  ? "text-violet-700"
+                  : "text-slate-300"
             }`}
           >
             [{message.contentType} attachment]
