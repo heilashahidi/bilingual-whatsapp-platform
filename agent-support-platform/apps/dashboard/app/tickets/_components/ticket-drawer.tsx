@@ -101,13 +101,19 @@ export function TicketDrawer() {
     return () => window.removeEventListener("keydown", onKey);
   }, [ticketId, close]);
 
-  // Lock body scroll while the drawer is open
+  // Lock body scroll AND mark the body so the site header can hide
+  // itself via CSS (see globals.css). Keeps the underlying page from
+  // bleeding through the scrim as a readable nav bar — the user
+  // wanted the kept-light scrim (so the dashboard is still felt
+  // behind) but without the literal text band peeking through.
   useEffect(() => {
     if (!ticketId) return;
     const original = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    document.body.dataset.drawerOpen = "1";
     return () => {
       document.body.style.overflow = original;
+      delete document.body.dataset.drawerOpen;
     };
   }, [ticketId]);
 
@@ -126,7 +132,7 @@ export function TicketDrawer() {
         type="button"
         aria-label="Close ticket"
         onClick={close}
-        className="drawer-scrim flex-1 cursor-default bg-slate-900/60 backdrop-blur-md"
+        className="drawer-scrim flex-1 cursor-default bg-slate-900/30 backdrop-blur-sm"
       />
 
       {/* Panel */}

@@ -54,3 +54,8 @@ body {
 }
 .drawer        { animation: slide-in-right 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
 .drawer-scrim  { animation: fade-in 180ms ease-out; }
+
+/* When the ticket drawer is open, hide the site-nav header so it
+   doesn't show through the scrim as a readable bar at the top.
+   Toggled by ticket-drawer.tsx via document.body.dataset.drawerOpen. */
+body[data-drawer-open] > header { display: none; }
