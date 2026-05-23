@@ -86,6 +86,25 @@ export function DetailPane({ users }: { users: InternalUser[] }) {
     };
   }, [ticketId, loadTicket]);
 
+  // Sync the browser tab title to the currently-opened ticket so
+  // operators with multiple tabs can distinguish them at a glance.
+  // Reverts to the default on unmount or when the selection clears.
+  useEffect(() => {
+    if (!ticket) return;
+    const firstInbound = ticket.messages.find((m) => m.direction === "inbound");
+    const snippet = (firstInbound?.translatedText ||
+      firstInbound?.originalText ||
+      ticket.category)
+      .replace(/\s+/g, " ")
+      .trim();
+    const short = snippet.length > 60 ? snippet.slice(0, 57) + "…" : snippet;
+    const previous = document.title;
+    document.title = `${short} · #${ticket.id.slice(0, 8)} · Agent Support`;
+    return () => {
+      document.title = previous;
+    };
+  }, [ticket]);
+
   if (!ticketId) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">

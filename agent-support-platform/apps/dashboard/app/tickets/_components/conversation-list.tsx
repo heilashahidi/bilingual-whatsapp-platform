@@ -129,15 +129,19 @@ export function ConversationList({
               />
 
               <div className="min-w-0 flex-1">
-                {/* Line 1: agent name + country flag + SLA timer on right */}
-                <div className="flex items-center gap-1.5">
-                  <span className="truncate text-[13px] font-semibold text-slate-900">
+                {/* Line 1: agent name + country flag + SLA timer on right.
+                    min-w-0 on the inner flex is required for truncate to
+                    actually shrink below content width — without it, long
+                    names ("Jean-Baptiste Pierre-Louis") push the SLA timer
+                    out of the row. */}
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-900">
                     {t.agent.name}
                   </span>
-                  <span aria-hidden className="text-xs">
+                  <span aria-hidden className="shrink-0 text-xs">
                     {COUNTRY_FLAG[t.agent.country]}
                   </span>
-                  <span className="ml-auto shrink-0">
+                  <span className="shrink-0">
                     <SlaTimer
                       deadline={t.slaFirstResponseDeadline}
                       size={12}

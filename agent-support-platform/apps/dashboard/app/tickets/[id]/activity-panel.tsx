@@ -51,21 +51,32 @@ function diffDescription(event: AuditEvent): string | null {
 export function ActivityPanel({ events }: { events: AuditEvent[] }) {
   if (events.length === 0) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Activity
-        </h3>
-        <p className="text-xs text-slate-400 italic">No activity recorded yet.</p>
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="border-b border-slate-200 px-4 py-2.5">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Activity
+          </h3>
+        </div>
+        <p className="px-4 py-3 text-xs text-slate-400 italic">No activity recorded yet.</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Activity
-      </h3>
-      <ol className="relative space-y-3 border-l border-slate-200 pl-4">
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2.5">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Activity
+        </h3>
+        <span className="text-[11px] text-slate-400">
+          {events.length} event{events.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {/* Scrollable region — events can pile up over a ticket's lifetime
+          (status changes, reassignments, mentions, notes) and would
+          otherwise push the rest of the sidebar way down the page. */}
+      <div className="max-h-[28rem] overflow-y-auto p-4">
+        <ol className="relative space-y-3 border-l border-slate-200 pl-4">
         {events.map((e) => {
           const detail = diffDescription(e);
           return (
@@ -86,7 +97,8 @@ export function ActivityPanel({ events }: { events: AuditEvent[] }) {
             </li>
           );
         })}
-      </ol>
+        </ol>
+      </div>
     </div>
   );
 }

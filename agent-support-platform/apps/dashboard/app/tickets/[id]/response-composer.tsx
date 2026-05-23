@@ -35,6 +35,16 @@ export function ResponseComposer({
     | { kind: "translated"; text: string };
   const [preview, setPreview] = useState<SendPreview | null>(null);
 
+  // Auto-dismiss the post-send confirmation after a few seconds so it
+  // doesn't stick around past the operator's next interaction. Cleanup
+  // cancels any pending dismissal if a new send fires first (in which
+  // case the preview state has already been reset by handleSubmit).
+  useEffect(() => {
+    if (!preview) return;
+    const t = setTimeout(() => setPreview(null), 4000);
+    return () => clearTimeout(t);
+  }, [preview]);
+
   // Mentions: maps the literal "@FullName" substring → user id. Stored as
   // a set of ids so duplicates collapse. We re-scan the text on submit to
   // only send mentions whose @FullName is still in the body.
