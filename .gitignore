@@ -1,0 +1,23 @@
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Node
+node_modules/
+
+# Local env
+.env
+*.env.local
+
+# Build outputs (covered per-app, but defensive at the root)
+dist/
+.next/
+.turbo/
+
+# Logs
+*.log
