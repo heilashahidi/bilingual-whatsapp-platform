@@ -113,10 +113,22 @@ router.get("/:id", async (req: Request, res: Response) => {
 // Send a response from the US team to the agent
 
 router.post("/:id/messages", async (req: Request, res: Response) => {
-  const { text, senderId } = req.body;
+  const { text } = req.body;
 
   if (!text) {
     return res.status(400).json({ error: "text is required" });
+  }
+
+  // Derive the sender from the authenticated session. We intentionally
+  // ignore any senderId in the request body — accepting it would let a
+  // signed-in user attribute messages to anyone else. The auth middleware
+  // is bypassed in test (DISABLE_AUTH=true), so allow a missing user
+  // there; in any auth-enabled environment, refuse the request.
+  const senderId = req.user?.userId ?? null;
+  if (!senderId && process.env.DISABLE_AUTH !== "true") {
+    return res
+      .status(401)
+      .json({ error: "Authenticated user required to send messages" });
   }
 
   const ticket = await prisma.ticket.findUnique({
