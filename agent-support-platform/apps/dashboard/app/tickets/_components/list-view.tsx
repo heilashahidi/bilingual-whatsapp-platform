@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import type { InternalUser, Severity, Ticket, TicketStatus } from "@/lib/types";
+import type { InternalUser, Ticket, TicketStatus } from "@/lib/types";
+import { SEVERITY_DOT } from "@/lib/severity-styles";
 import { SlaTimer } from "./sla-timer";
 
 // Tabular view of tickets, sharing the same filters as KanbanBoard.
@@ -31,13 +32,6 @@ const STATUS_DOT: Record<TicketStatus, string> = {
   waiting_on_agent: "bg-amber-500",
   resolved:         "bg-emerald-500",
   closed:           "bg-slate-400",
-};
-
-const SEVERITY_DOT: Record<Severity, string> = {
-  critical: "bg-rose-500",
-  high:     "bg-orange-500",
-  medium:   "bg-amber-500",
-  low:      "bg-slate-400",
 };
 
 const COUNTRY_FLAG: Record<string, string> = { HT: "🇭🇹", DO: "🇩🇴", CD: "🇨🇩" };

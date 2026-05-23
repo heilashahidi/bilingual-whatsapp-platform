@@ -5,10 +5,10 @@ import type {
   InternalUser,
   Message,
   Note,
-  Severity,
   TicketDetail,
   TicketStatus,
 } from "@/lib/types";
+import { SEVERITY_PILL } from "@/lib/severity-styles";
 import { ActivityPanel } from "../activity-panel";
 import { ResponseComposer } from "../response-composer";
 import { TicketActions } from "../ticket-actions";
@@ -17,13 +17,6 @@ import { SlaTimer } from "../../_components/sla-timer";
 // Renderable detail view, used in BOTH the full /tickets/[id] route AND
 // the drawer that opens from the kanban. Everything client-side — the
 // data is passed in as props by whichever surface is hosting it.
-
-const severityStyles: Record<Severity, string> = {
-  critical: "bg-rose-100 text-rose-800 ring-rose-200",
-  high: "bg-orange-100 text-orange-800 ring-orange-200",
-  medium: "bg-amber-100 text-amber-800 ring-amber-200",
-  low: "bg-slate-100 text-slate-700 ring-slate-200",
-};
 
 const statusStyles: Record<TicketStatus, string> = {
   open: "bg-sky-100 text-sky-800",
@@ -274,7 +267,7 @@ export function TicketDetailView({
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <span
-              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${severityStyles[ticket.severity]}`}
+              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${SEVERITY_PILL[ticket.severity]}`}
             >
               {ticket.severity}
             </span>

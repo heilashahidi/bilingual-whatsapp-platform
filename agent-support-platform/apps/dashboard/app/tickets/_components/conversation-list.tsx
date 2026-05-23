@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useMemo } from "react";
-import type { InternalUser, Severity, Ticket, TicketStatus } from "@/lib/types";
+import type { InternalUser, Ticket, TicketStatus } from "@/lib/types";
+import { SEVERITY_DOT } from "@/lib/severity-styles";
 import { readFiltersFromParams } from "./filters-bar";
 import { SlaTimer } from "./sla-timer";
 
@@ -12,13 +13,6 @@ import { SlaTimer } from "./sla-timer";
 // /tickets?ticket=<id> so clicking selects the ticket and the right
 // pane renders the detail (handled by tickets-shell). Rows are tighter
 // than the kanban cards — designed for scanning a queue.
-
-const SEVERITY_DOT: Record<Severity, string> = {
-  critical: "bg-rose-500",
-  high: "bg-orange-500",
-  medium: "bg-amber-500",
-  low: "bg-slate-400",
-};
 
 const STATUS_LABEL: Record<TicketStatus, string> = {
   open: "Open",

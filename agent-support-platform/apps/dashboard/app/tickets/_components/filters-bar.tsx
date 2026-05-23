@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useCallback, useMemo } from "react";
 import type { Country, InternalUser, Severity } from "@/lib/types";
+import { SEVERITY_DOT } from "@/lib/severity-styles";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 const COUNTRIES: Country[] = ["HT", "DO", "CD"];
@@ -12,13 +13,6 @@ const COUNTRY_LABEL: Record<Country, { flag: string; name: string }> = {
   HT: { flag: "🇭🇹", name: "Haiti" },
   DO: { flag: "🇩🇴", name: "Dom. Republic" },
   CD: { flag: "🇨🇩", name: "DR Congo" },
-};
-
-const SEVERITY_DOT: Record<Severity, string> = {
-  critical: "bg-rose-500",
-  high:     "bg-orange-500",
-  medium:   "bg-amber-500",
-  low:      "bg-slate-400",
 };
 
 export interface ActiveFilters {

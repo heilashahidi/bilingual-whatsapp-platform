@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { fetchIncidents } from "@/lib/api";
 import { getServerApiToken } from "@/lib/auth-server";
-import type { Country, Incident, IncidentStatus, Severity } from "@/lib/types";
+import { SEVERITY_PILL } from "@/lib/severity-styles";
+import type { Country, Incident, IncidentStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -10,13 +11,6 @@ const statusStyle: Record<IncidentStatus, string> = {
   confirmed: "bg-amber-100 text-amber-800 ring-amber-200",
   mitigating: "bg-sky-100 text-sky-800 ring-sky-200",
   resolved: "bg-emerald-100 text-emerald-800 ring-emerald-200",
-};
-
-const severityStyle: Record<Severity, string> = {
-  critical: "bg-rose-600 text-white",
-  high: "bg-orange-500 text-white",
-  medium: "bg-amber-400 text-amber-950",
-  low: "bg-slate-300 text-slate-800",
 };
 
 const countryFlag: Record<Country, string> = {
@@ -132,7 +126,7 @@ export default async function IncidentsPage({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span
-                      className={`inline-flex h-5 items-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide ${severityStyle[i.severity]}`}
+                      className={`inline-flex h-5 items-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset ${SEVERITY_PILL[i.severity]}`}
                     >
                       {i.severity}
                     </span>

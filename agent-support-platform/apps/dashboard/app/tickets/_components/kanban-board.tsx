@@ -18,6 +18,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import { updateTicket } from "@/lib/api";
+import { SEVERITY_DOT, SEVERITY_PILL } from "@/lib/severity-styles";
 import type {
   Country,
   InternalUser,
@@ -45,12 +46,8 @@ const COLUMNS: {
   { status: "resolved",         label: "Resolved",         dotClass: "bg-emerald-500", ringClass: "ring-emerald-300/60 bg-emerald-50/60" },
 ];
 
-const severityStyles: Record<Severity, { chip: string; dot: string }> = {
-  critical: { chip: "bg-rose-50    text-rose-700    ring-rose-200/80",    dot: "bg-rose-500" },
-  high:     { chip: "bg-orange-50  text-orange-700  ring-orange-200/80",  dot: "bg-orange-500" },
-  medium:   { chip: "bg-amber-50   text-amber-700   ring-amber-200/80",   dot: "bg-amber-500" },
-  low:      { chip: "bg-slate-50   text-slate-600   ring-slate-200",      dot: "bg-slate-400" },
-};
+// Severity styles imported from lib/severity-styles so every surface
+// (kanban, list, detail, incidents) uses the same colors.
 
 const COUNTRY_META: Record<Country, { flag: string; label: string; langCode: string; langLabel: string }> = {
   HT: { flag: "🇭🇹", label: "Haiti",              langCode: "ht", langLabel: "Kreyòl" },
@@ -391,7 +388,6 @@ function CardContent({
   const original = latest?.originalText || "";
   const snippet = translated || original || "(no messages)";
   const country = COUNTRY_META[ticket.agent.country];
-  const sev = severityStyles[ticket.severity];
   const assignee = userById(ticket.assignedTo);
   const isCompact = density === "compact";
   const connDot = CONNECTIVITY_DOT[ticket.agent.connectivityStatus] ?? CONNECTIVITY_DOT.unknown;
@@ -406,8 +402,8 @@ function CardContent({
     >
       {/* Row 1 — severity + SLA */}
       <div className={`flex items-center justify-between gap-2 pr-6 ${isCompact ? "mb-1.5" : "mb-2"}`}>
-        <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${sev.chip}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${sev.dot}`} />
+        <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${SEVERITY_PILL[ticket.severity]}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${SEVERITY_DOT[ticket.severity]}`} />
           {ticket.severity}
         </span>
         <SlaTimer deadline={ticket.slaFirstResponseDeadline} />
