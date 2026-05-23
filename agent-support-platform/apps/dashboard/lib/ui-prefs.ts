@@ -39,10 +39,14 @@ const DEFAULTS: UiPrefs = {
   sidebarOpen: true,
 };
 
-// v2 bumps the storage key so users with old "kanban" defaults get reset
-// to the new inbox default. Their density/bilingual prefs aren't worth
-// keeping across this layout change.
-const STORAGE_KEY = "tickets.uiPrefs.v2";
+// Storage-key version bumps invalidate everyone's saved prefs and
+// re-apply DEFAULTS on next load. Use sparingly — the user loses their
+// density/view/sidebar choices too.
+//
+// v2: switched the default view from "kanban" to "inbox"
+// v3: switched the default bilingual from true to false (English-only
+//     until the operator explicitly toggles bilingual on)
+const STORAGE_KEY = "tickets.uiPrefs.v3";
 
 function readStorage(): UiPrefs {
   if (typeof window === "undefined") return DEFAULTS;
