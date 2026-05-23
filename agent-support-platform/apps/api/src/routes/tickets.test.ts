@@ -143,6 +143,75 @@ describe("GET /api/tickets", () => {
   });
 });
 
+describe("GET /api/tickets — pagination validation", () => {
+  beforeEach(() => {
+    findMany.mockResolvedValue([]);
+    count.mockResolvedValue(0);
+  });
+
+  it("rejects non-numeric limit with 400", async () => {
+    const res = await request(buildApp()).get("/api/tickets?limit=foo");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/limit/i);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects negative limit with 400", async () => {
+    const res = await request(buildApp()).get("/api/tickets?limit=-5");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/between 1 and 100/);
+  });
+
+  it("rejects limit above the max (100) with 400", async () => {
+    const res = await request(buildApp()).get("/api/tickets?limit=500");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/between 1 and 100/);
+  });
+
+  it("rejects fractional limit with 400", async () => {
+    const res = await request(buildApp()).get("/api/tickets?limit=10.5");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/integer/);
+  });
+
+  it("rejects negative offset with 400", async () => {
+    const res = await request(buildApp()).get("/api/tickets?offset=-1");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/>= 0/);
+  });
+
+  it("rejects non-numeric offset with 400", async () => {
+    const res = await request(buildApp()).get("/api/tickets?offset=NaN");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/offset/i);
+  });
+
+  it("accepts limit=1 (lower bound)", async () => {
+    const res = await request(buildApp()).get("/api/tickets?limit=1");
+    expect(res.status).toBe(200);
+    expect(findMany.mock.calls[0][0].take).toBe(1);
+  });
+
+  it("accepts limit=100 (upper bound)", async () => {
+    const res = await request(buildApp()).get("/api/tickets?limit=100");
+    expect(res.status).toBe(200);
+    expect(findMany.mock.calls[0][0].take).toBe(100);
+  });
+
+  it("accepts offset=0 (lower bound)", async () => {
+    const res = await request(buildApp()).get("/api/tickets?offset=0");
+    expect(res.status).toBe(200);
+    expect(findMany.mock.calls[0][0].skip).toBe(0);
+  });
+
+  it("defaults to limit=50 offset=0 when params are absent", async () => {
+    const res = await request(buildApp()).get("/api/tickets");
+    expect(res.status).toBe(200);
+    expect(findMany.mock.calls[0][0].take).toBe(50);
+    expect(findMany.mock.calls[0][0].skip).toBe(0);
+  });
+});
+
 describe("POST /api/tickets/:id/messages — sender identity", () => {
   // The auth middleware is bypassed in tests (DISABLE_AUTH=true), so
   // req.user is undefined. The route must therefore:

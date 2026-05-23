@@ -14,16 +14,43 @@ const router = Router();
 // ─── GET /api/tickets ───────────────────────────────────────
 // List tickets with filters, sorted by severity then SLA deadline
 
+// Pagination bounds. limit max 100 keeps a single response under ~1MB
+// for the typical ticket payload; offset is unbounded above (callers
+// are expected to use limit for paging, not to deep-paginate by offset).
+const LIMIT_DEFAULT = 50;
+const LIMIT_MAX = 100;
+
+function parsePagination(
+  rawLimit: unknown,
+  rawOffset: unknown
+):
+  | { ok: true; limit: number; offset: number }
+  | { ok: false; error: string } {
+  const limit = rawLimit === undefined ? LIMIT_DEFAULT : Number(rawLimit);
+  const offset = rawOffset === undefined ? 0 : Number(rawOffset);
+
+  if (!Number.isFinite(limit) || !Number.isInteger(limit)) {
+    return { ok: false, error: "limit must be an integer" };
+  }
+  if (limit < 1 || limit > LIMIT_MAX) {
+    return { ok: false, error: `limit must be between 1 and ${LIMIT_MAX}` };
+  }
+  if (!Number.isFinite(offset) || !Number.isInteger(offset)) {
+    return { ok: false, error: "offset must be an integer" };
+  }
+  if (offset < 0) {
+    return { ok: false, error: "offset must be >= 0" };
+  }
+  return { ok: true, limit, offset };
+}
+
 router.get("/", async (req: Request, res: Response) => {
-  const {
-    status,
-    severity,
-    category,
-    country,
-    assignedTo,
-    limit = "50",
-    offset = "0",
-  } = req.query;
+  const { status, severity, category, country, assignedTo } = req.query;
+
+  const pagination = parsePagination(req.query.limit, req.query.offset);
+  if (!pagination.ok) {
+    return res.status(400).json({ error: pagination.error });
+  }
 
   const where: any = { deletedAt: null };
   if (status) where.status = status;
@@ -51,8 +78,8 @@ router.get("/", async (req: Request, res: Response) => {
       { severity: "asc" }, // critical first
       { slaFirstResponseDeadline: "asc" }, // nearest SLA deadline first
     ],
-    take: parseInt(limit as string),
-    skip: parseInt(offset as string),
+    take: pagination.limit,
+    skip: pagination.offset,
   });
 
   // Flatten incident._count.tickets → incident.ticketCount so the
