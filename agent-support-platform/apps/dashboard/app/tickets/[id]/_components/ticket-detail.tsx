@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type {
   InternalUser,
   Message,
@@ -231,6 +232,33 @@ export function TicketDetailView({
     ? formatRelative(ticket.resolvedAt)
     : null;
 
+  // ─── Conversation auto-scroll ──────────────────────────────────────
+  // The conversation block is scrollable on its own (max-h + overflow).
+  // On mount, jump straight to the latest message. On subsequent
+  // updates (new inbound message via realtime, operator sends a reply),
+  // only auto-scroll if the user was already near the bottom — otherwise
+  // we'd yank them away from older history they're reading.
+  const conversationRef = useRef<HTMLDivElement | null>(null);
+  const wasAtBottomRef = useRef(true);
+  const itemCount = ticket.messages.length + ticket.notes.length;
+
+  useEffect(() => {
+    const el = conversationRef.current;
+    if (!el) return;
+    if (wasAtBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [itemCount]);
+
+  function handleConversationScroll() {
+    const el = conversationRef.current;
+    if (!el) return;
+    // Within 64px of the bottom counts as "near bottom" for the
+    // auto-scroll decision on the NEXT update.
+    wasAtBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 64;
+  }
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -291,11 +319,25 @@ export function TicketDetailView({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <h2 className="mb-3 text-sm font-medium text-slate-700">
-              Conversation
-            </h2>
-            <div className="space-y-3">
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-white/60 px-4 py-2.5">
+              <h2 className="text-sm font-medium text-slate-700">
+                Conversation
+              </h2>
+              <span className="text-[11px] text-slate-500">
+                {ticket.messages.length} message
+                {ticket.messages.length === 1 ? "" : "s"}
+                {ticket.notes.length > 0 &&
+                  ` · ${ticket.notes.length} note${ticket.notes.length === 1 ? "" : "s"}`}
+              </span>
+            </div>
+            {/* Scrollable bubble region. max-h scales with viewport so the
+                composer below stays in view on tall threads. */}
+            <div
+              ref={conversationRef}
+              onScroll={handleConversationScroll}
+              className="max-h-[55vh] space-y-3 overflow-y-auto p-4"
+            >
               {ticket.messages.length === 0 && ticket.notes.length === 0 ? (
                 <div className="text-sm text-slate-500">No activity yet.</div>
               ) : (
