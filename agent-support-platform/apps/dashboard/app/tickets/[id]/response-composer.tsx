@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createNote, sendResponse } from "@/lib/api";
+import {
+  createNote,
+  fetchReplySuggestions,
+  sendResponse,
+  type ReplySuggestion,
+} from "@/lib/api";
 import type { InternalUser } from "@/lib/types";
 
 type Mode = "reply" | "note";
@@ -166,6 +171,58 @@ export function ResponseComposer({
     setPickerOpen(false);
   }, [mode]);
 
+  // ─── AI-suggested replies ─────────────────────────────────────────
+  // Only fetched in "reply" mode. The first fetch happens automatically
+  // when the composer mounts (or the ticket changes); the operator can
+  // manually regenerate via the refresh button. We never auto-refetch on
+  // socket events — that would re-shuffle suggestions while the operator
+  // is mid-edit.
+  const [suggestions, setSuggestions] = useState<ReplySuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+
+  const loadSuggestions = useCallback(async () => {
+    setSuggestionsLoading(true);
+    try {
+      const list = await fetchReplySuggestions(ticketId);
+      setSuggestions(list);
+    } catch {
+      setSuggestions([]);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }, [ticketId]);
+
+  useEffect(() => {
+    if (mode !== "reply") return;
+    let cancelled = false;
+    setSuggestionsLoading(true);
+    fetchReplySuggestions(ticketId)
+      .then((list) => {
+        if (!cancelled) setSuggestions(list);
+      })
+      .catch(() => {
+        if (!cancelled) setSuggestions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSuggestionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticketId, mode]);
+
+  function useSuggestion(s: ReplySuggestion) {
+    setText(s.text);
+    // Clear any stale mention markers — suggestions never carry mentions.
+    setMentions(new Map());
+    // Move focus to the textarea so the operator can immediately edit.
+    setTimeout(() => {
+      textareaRef.current?.focus();
+      const len = s.text.length;
+      textareaRef.current?.setSelectionRange(len, len);
+    }, 0);
+  }
+
   const isNote = mode === "note";
   const wrapperClass = isNote
     ? "rounded-lg border border-amber-300 bg-amber-50 p-4"
@@ -187,6 +244,56 @@ export function ResponseComposer({
           Internal note
         </TabButton>
       </div>
+
+      {/* AI suggestions — only in reply mode; quietly hidden when none */}
+      {!isNote && (suggestionsLoading || suggestions.length > 0) && (
+        <div className="mb-3 rounded-md border border-violet-200 bg-violet-50/60 p-2.5">
+          <div className="mb-1.5 flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-violet-700">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M12 2l2.4 7.4L22 12l-7.6 2.6L12 22l-2.4-7.4L2 12l7.6-2.6z" strokeLinejoin="round" />
+              </svg>
+              AI-suggested replies
+            </div>
+            <button
+              type="button"
+              onClick={loadSuggestions}
+              disabled={suggestionsLoading}
+              className="text-[11px] font-medium text-violet-700 hover:text-violet-900 disabled:opacity-50"
+              title="Regenerate suggestions"
+            >
+              {suggestionsLoading ? "Generating…" : "↻ Regenerate"}
+            </button>
+          </div>
+          {suggestionsLoading && suggestions.length === 0 ? (
+            <div className="space-y-1.5">
+              <div className="h-8 animate-pulse rounded bg-violet-100" />
+              <div className="h-8 animate-pulse rounded bg-violet-100" />
+              <div className="h-8 animate-pulse rounded bg-violet-100" />
+            </div>
+          ) : (
+            <ul className="space-y-1.5">
+              {suggestions.map((s, i) => (
+                <li key={i}>
+                  <button
+                    type="button"
+                    onClick={() => useSuggestion(s)}
+                    className="group flex w-full items-start gap-2 rounded border border-violet-200/80 bg-white px-2.5 py-1.5 text-left text-[13px] text-slate-700 transition hover:border-violet-400 hover:bg-violet-50"
+                  >
+                    <span className="mt-0.5 shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-700">
+                      {s.tone}
+                    </span>
+                    <span className="flex-1 leading-snug">{s.text}</span>
+                    <span className="mt-0.5 shrink-0 text-[10px] text-violet-400 opacity-0 transition group-hover:opacity-100">
+                      use →
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <label
         className={`block text-xs font-medium uppercase tracking-wide ${

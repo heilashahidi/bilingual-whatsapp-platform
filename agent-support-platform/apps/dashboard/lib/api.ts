@@ -93,6 +93,26 @@ export interface TicketPatch {
   tags?: string[];
 }
 
+export interface ReplySuggestion {
+  tone: string;
+  text: string;
+}
+
+export async function fetchReplySuggestions(
+  ticketId: string
+): Promise<ReplySuggestion[]> {
+  const res = await fetch(
+    `${API_URL}/api/tickets/${ticketId}/suggest-replies`,
+    {
+      method: "POST",
+      headers: await authHeaders(),
+    }
+  );
+  if (!res.ok) return [];
+  const data = (await res.json()) as { suggestions?: ReplySuggestion[] };
+  return data.suggestions ?? [];
+}
+
 export async function updateTicket(
   ticketId: string,
   patch: TicketPatch

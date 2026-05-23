@@ -6,6 +6,7 @@ import { indexResolvedTicket } from "../services/kb-indexer";
 import { recordEvent } from "../services/audit";
 import { notifyMention } from "../services/notifier";
 import { sendAgentResponse } from "../integrations/whatsapp";
+import { suggestReplies } from "../services/reply-suggester";
 import { requireRole } from "../middleware/auth";
 
 const router = Router();
@@ -507,6 +508,24 @@ router.delete("/:id", requireRole("admin"), async (req: Request, res: Response) 
   emitTicketEvent("updated", ticket.id);
 
   res.json({ id: ticket.id, deletedAt: ticket.deletedAt });
+});
+
+// ─── POST /api/tickets/:id/suggest-replies ─────────────────────────
+// AI-drafted reply candidates for the operator. Returns three options
+// varying in tone (direct / empathetic / investigative). The operator
+// picks one and edits before sending — these are never sent automatically.
+
+router.post("/:id/suggest-replies", async (req: Request, res: Response) => {
+  try {
+    const suggestions = await suggestReplies(req.params.id);
+    res.json({ suggestions });
+  } catch (err) {
+    console.error("✗ suggest-replies failed:", err);
+    // Always return 200 with empty list — UI hides the suggestions block
+    // gracefully when none are returned, and we don't want a Claude
+    // outage to look like a broken ticket page.
+    res.json({ suggestions: [] });
+  }
 });
 
 export { router as ticketRouter };
