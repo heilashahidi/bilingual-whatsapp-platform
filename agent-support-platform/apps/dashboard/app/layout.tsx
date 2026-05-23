@@ -22,7 +22,7 @@ export default function RootLayout({
       <body>
         <AuthSessionProvider>
           <header className="border-b border-slate-200 bg-white">
-            <div className="flex items-center justify-between px-6 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
               <div className="flex items-center gap-6">
                 <Link href="/" className="text-lg font-semibold tracking-tight">
                   Agent Support
@@ -49,7 +49,7 @@ export default function RootLayout({
               The inbox view fills the whole viewport; tickets/[id] and
               /knowledge constrain themselves so long-form text stays
               readable. */}
-          <main className="px-6 py-6">{children}</main>
+          <main className="px-4 py-4 sm:px-6 sm:py-6">{children}</main>
           <ToastContainer />
           <KeyboardShortcuts />
         </AuthSessionProvider>
