@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AuthSessionProvider } from "./_components/session-provider";
+import { RealtimeIndicator } from "./_components/realtime-indicator";
 import { ToastContainer } from "./_components/toast-container";
 import { UserMenu } from "./_components/user-menu";
 import "./globals.css";
@@ -37,7 +38,10 @@ export default function RootLayout({
                   </Link>
                 </nav>
               </div>
-              <UserMenu />
+              <div className="flex items-center gap-3">
+                <RealtimeIndicator />
+                <UserMenu />
+              </div>
             </div>
           </header>
           {/* No global max-width — pages handle their own container width.
