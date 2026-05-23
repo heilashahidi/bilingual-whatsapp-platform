@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { fetchTicket, fetchUsers } from "@/lib/api";
 import { getSocket, type TicketChangedEvent } from "@/lib/socket";
@@ -117,9 +118,14 @@ export function TicketDrawer() {
     };
   }, [ticketId]);
 
-  if (!ticketId) return null;
+  // SSR-safe portal target. Only render the overlay once the client
+  // mount has flushed so document.body exists.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
-  return (
+  if (!ticketId || !mounted) return null;
+
+  const overlay = (
     <div
       className="fixed inset-0 z-40 flex"
       role="dialog"
@@ -168,7 +174,7 @@ export function TicketDrawer() {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 pb-5 pr-20">
+        <div className="flex-1 overflow-y-auto px-5 pb-5 pr-28">
           {loading && !ticket && (
             <div className="py-8 text-center text-sm text-slate-500">Loading…</div>
           )}
@@ -182,4 +188,10 @@ export function TicketDrawer() {
       </div>
     </div>
   );
+
+  // Portal to document.body so the overlay is a sibling of <main>,
+  // not nested inside it. Lets us hide the entire page content under
+  // the drawer without affecting the drawer itself (visibility and
+  // opacity inherit, so a nested drawer would be hidden too).
+  return createPortal(overlay, document.body);
 }

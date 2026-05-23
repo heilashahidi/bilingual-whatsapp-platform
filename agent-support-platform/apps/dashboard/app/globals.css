@@ -55,31 +55,11 @@ body {
 .drawer        { animation: slide-in-right 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
 .drawer-scrim  { animation: fade-in 180ms ease-out; }
 
-/* When the ticket drawer is open, hide all the dashboard chrome that
-   would otherwise show through the scrim as readable text bars:
-     - the site-nav header (Agent Support / Tickets / Incidents …)
-     - the page-level header + filters bar (wrapped in data-drawer-hidable
-       inside tickets-shell.tsx)
-   The kanban / list / inbox shell stays visible because the user
-   wanted the dashboard "felt" behind the blurred scrim, just without
-   any literal text peeking through.
+/* When the ticket drawer is open, hide the entire dashboard chrome
+   underneath it. The drawer is portaled to document.body (see
+   ticket-drawer.tsx), so hiding the site nav + main doesn't affect
+   the drawer itself. Eliminates every possible source of a "bar at
+   the top" by simply having nothing rendered behind the scrim.
    Toggled by ticket-drawer.tsx via document.body.dataset.drawerOpen. */
 body[data-drawer-open] > header,
-body[data-drawer-open] [data-drawer-hidable] { display: none; }
-
-/* Drop main's top/bottom padding when the drawer is open so the
-   kanban / inbox / list shell behind the scrim hugs the viewport
-   edges. Otherwise the body bg color shows through the scrim above
-   the shell as a "band at the top". */
-body[data-drawer-open] main { padding-top: 0; padding-bottom: 0; }
-
-/* The TicketsShell's outer `space-y-4` container still applies
-   margin-top: 1rem to the kanban/inbox/list shell because the
-   hidden data-drawer-hidable wrapper is its DOM sibling. Zero
-   that gap so the shell sits flush against the viewport top. */
-body[data-drawer-open] [data-drawer-hidable] + * { margin-top: 0; }
-
-/* Unify body bg with the shell's bg (pure white) so any leftover
-   seam between body padding/margin and the shell is invisible
-   through the blurred scrim. */
-body[data-drawer-open] { background: #fff; }
+body[data-drawer-open] > main { visibility: hidden; }
