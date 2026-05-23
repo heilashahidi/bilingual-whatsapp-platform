@@ -66,3 +66,9 @@ body {
    Toggled by ticket-drawer.tsx via document.body.dataset.drawerOpen. */
 body[data-drawer-open] > header,
 body[data-drawer-open] [data-drawer-hidable] { display: none; }
+
+/* Drop main's top/bottom padding when the drawer is open so the
+   kanban / inbox / list shell behind the scrim hugs the viewport
+   edges. Otherwise the body bg color shows through the scrim above
+   the shell as a "band at the top". */
+body[data-drawer-open] main { padding-top: 0; padding-bottom: 0; }
