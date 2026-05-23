@@ -35,7 +35,7 @@ if [[ "$SLACK_URL" != https://hooks.slack.com/* ]]; then
 fi
 
 # Production dashboard URL — used in Slack "Open ticket" buttons.
-DASHBOARD_URL="${DASHBOARD_BASE_URL:-https://dashboard-production-5d4e.up.railway.app}"
+DASHBOARD_URL="${DASHBOARD_BASE_URL:-https://nclusion-inbox-production.up.railway.app}"
 
 # ─── Local: API .env ────────────────────────────────────────
 if grep -q "^SLACK_WEBHOOK_URL=" apps/api/.env; then

@@ -6,7 +6,7 @@ honest about which numbers are *measured* against the live deployment
 versus *projected* from a single component's behavior.
 
 > **Test environment**
-> - API: `api-production-091a.up.railway.app` — Railway, 1 vCPU shared, 512 MB
+> - API: `nclusion-api.up.railway.app` — Railway, 1 vCPU shared, 512 MB
 > - (Earlier measurements in this doc were taken against the parallel Fly.io deploy at `heilashahidi.fly.dev` — same code, same Neon DB, comparable VM size — and are within ~50ms of the Railway numbers.)
 > - DB: Neon Postgres (free tier, pooled connection, region `us-east-2`)
 > - Redis: Upstash (free tier, region `us-east-1`)
@@ -240,7 +240,7 @@ suggests the prompt alone is good enough for current scale.
 ```bash
 # 1) Edge latency — 5 hits to /health
 for i in 1 2 3 4 5; do
-  curl -s -o /dev/null -w "%{time_total}\n" https://api-production-091a.up.railway.app/health
+  curl -s -o /dev/null -w "%{time_total}\n" https://nclusion-api.up.railway.app/health
 done
 
 # 2) End-to-end ingestion timing

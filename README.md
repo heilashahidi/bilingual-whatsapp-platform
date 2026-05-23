@@ -6,8 +6,8 @@ A real-time support bridge connecting 1,000+ field agents across Haiti, Dominica
 
 | Service | URL |
 |---|---|
-| API | <https://api-production-091a.up.railway.app> |
-| Dashboard | <https://dashboard-production-5d4e.up.railway.app> |
+| API | <https://nclusion-api.up.railway.app> |
+| Dashboard | <https://nclusion-inbox-production.up.railway.app> |
 
 ## The Problem
 

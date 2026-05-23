@@ -125,8 +125,8 @@ Two services in one Railway project, both backed by the same GitHub repo:
 
 | Service | URL | Config file | Dockerfile |
 |---|---|---|---|
-| API + Socket.IO + webhooks | <https://api-production-091a.up.railway.app> | `railway.api.json` | `apps/api/Dockerfile` |
-| Dashboard (Next.js) | <https://dashboard-production-5d4e.up.railway.app> | `railway.dashboard.json` | `apps/dashboard/Dockerfile` |
+| API + Socket.IO + webhooks | <https://nclusion-api.up.railway.app> | `railway.api.json` | `apps/api/Dockerfile` |
+| Dashboard (Next.js) | <https://nclusion-inbox-production.up.railway.app> | `railway.dashboard.json` | `apps/dashboard/Dockerfile` |
 
 ### 2.1 One-time bootstrap
 
@@ -167,12 +167,12 @@ bulk).
 | `DATABASE_URL` | Your Neon pooled connection string |
 | `REDIS_URL` | Your Upstash rediss:// endpoint |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER` | Twilio creds |
-| `WEBHOOK_BASE_URL` | `https://api-production-091a.up.railway.app` (must match the public Railway URL exactly — used in Twilio signature reconstruction) |
+| `WEBHOOK_BASE_URL` | `https://nclusion-api.up.railway.app` (must match the public Railway URL exactly — used in Twilio signature reconstruction) |
 | `USE_REAL_WHATSAPP=true`, `USE_REAL_TRANSLATION=true`, `USE_REAL_CLASSIFICATION=true` | Flip on the real integrations |
 | `ANTHROPIC_API_KEY` | For all five Claude surfaces (translation, classification, reply drafts, incident summaries, KB drafts) |
 | `NEXTAUTH_SECRET` | Must be the EXACT same value as on the dashboard service |
 | `SLACK_WEBHOOK_URL` | Optional — for critical/high ticket notifications |
-| `DASHBOARD_BASE_URL` | `https://dashboard-production-5d4e.up.railway.app` — used in Slack "Open ticket" buttons |
+| `DASHBOARD_BASE_URL` | `https://nclusion-inbox-production.up.railway.app` — used in Slack "Open ticket" buttons |
 | `PORT=3001` | Explicit override of Railway's auto-injected PORT |
 
 **Dashboard service:**
@@ -186,7 +186,7 @@ bulk).
 | `PORT=3000` | Explicit override |
 
 > The Google OAuth client must have
-> `https://dashboard-production-5d4e.up.railway.app/api/auth/callback/google`
+> `https://nclusion-inbox-production.up.railway.app/api/auth/callback/google`
 > in its **Authorized redirect URIs** list. Without this, sign-in fails
 > with a `redirect_uri_mismatch` error.
 
@@ -196,8 +196,8 @@ In the Twilio Sandbox console:
 
 | Field | Value |
 |---|---|
-| WHEN A MESSAGE COMES IN | `https://api-production-091a.up.railway.app/webhooks/whatsapp` (POST) |
-| STATUS CALLBACK URL | `https://api-production-091a.up.railway.app/webhooks/whatsapp/status` (POST) |
+| WHEN A MESSAGE COMES IN | `https://nclusion-api.up.railway.app/webhooks/whatsapp` (POST) |
+| STATUS CALLBACK URL | `https://nclusion-api.up.railway.app/webhooks/whatsapp/status` (POST) |
 
 The API verifies Twilio's signature on every webhook using
 `WEBHOOK_BASE_URL` — if that env var doesn't match the URL Twilio
@@ -279,7 +279,7 @@ on the free plan.
 The API exposes `GET /health`:
 
 ```bash
-curl https://api-production-091a.up.railway.app/health
+curl https://nclusion-api.up.railway.app/health
 # { "status": "ok", "timestamp": "2026-05-23T01:27:43.450Z" }
 ```
 
