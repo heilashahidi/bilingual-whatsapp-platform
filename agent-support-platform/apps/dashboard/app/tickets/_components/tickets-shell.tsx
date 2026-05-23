@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { InternalUser, Ticket } from "@/lib/types";
 import { useUiPrefs } from "@/lib/ui-prefs";
 import { ConversationList } from "./conversation-list";
@@ -36,16 +37,59 @@ export function TicketsShell({
   const [prefs, setPrefs] = useUiPrefs();
   const [newOpen, setNewOpen] = useState(false);
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+
+  // ?closed=1 turns the archived-ticket filter off. The toggle is wired
+  // by the IncidentClusterClosedBanner below — when an incident's cluster
+  // is fully closed the user has no other way to inspect it from the
+  // tickets surface.
+  const includeClosed = searchParams.get("closed") === "1";
 
   // Closed tickets are archived — they don't show in any of the three
-  // views by default. (We could add a dedicated archive inbox later.)
-  const visible = tickets.filter((t) => t.status !== "closed");
+  // views by default. ?closed=1 overrides this for archive inspection.
+  const visible = includeClosed
+    ? tickets
+    : tickets.filter((t) => t.status !== "closed");
 
-  const isInbox = prefs.view === "inbox";
+  // When the user is intentionally inspecting closed tickets, kanban has
+  // no Closed column to render them in — force the list view so they're
+  // actually visible. The prefs.view choice still persists.
+  const effectiveView = includeClosed ? "list" : prefs.view;
+  const isInbox = effectiveView === "inbox";
   // Whether the right pane should occupy the small-screen view. Drives
   // the single-pane toggle on mobile: no selection → conversation list,
   // selection → detail pane (with a back button to clear).
   const hasSelection = searchParams.get("ticket") !== null;
+
+  // Detect: the URL has ?incident=X, the cluster has members, but every
+  // visible member was filtered out by the closed-ticket rule. We surface
+  // this with a banner instead of showing an empty board, so the user
+  // doesn't think the link is broken.
+  const incidentId = searchParams.get("incident");
+  const incidentClusterInfo = useMemo(() => {
+    if (!incidentId) return null;
+    if (includeClosed) return null; // banner is redundant once they expand
+    const inCluster = tickets.filter((t) => t.incident?.id === incidentId);
+    if (inCluster.length === 0) return null;
+    const visibleInCluster = visible.filter(
+      (t) => t.incident?.id === incidentId
+    );
+    if (visibleInCluster.length > 0) return null;
+    const closedCount = inCluster.filter((t) => t.status === "closed").length;
+    if (closedCount === 0) return null;
+    return {
+      title: inCluster[0]?.incident?.title ?? "this incident",
+      closedCount,
+      totalCount: inCluster.length,
+    };
+  }, [incidentId, includeClosed, tickets, visible]);
+
+  // Same URL with ?closed=1 added — drives the "Show closed" button.
+  const showClosedHref = useMemo(() => {
+    const next = new URLSearchParams(Array.from(searchParams.entries()));
+    next.set("closed", "1");
+    return `${pathname}?${next.toString()}`;
+  }, [pathname, searchParams]);
 
   return (
     <div className="space-y-4">
@@ -58,6 +102,46 @@ export function TicketsShell({
       />
 
       <FiltersBar users={users} />
+
+      {incidentClusterInfo && (
+        <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="shrink-0 text-amber-700"
+            aria-hidden
+          >
+            <path d="M3 4h18v4H3zM4 8v12h16V8M9 12h6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <div className="min-w-0 flex-1">
+            <div className="font-medium">
+              All {incidentClusterInfo.closedCount} ticket
+              {incidentClusterInfo.closedCount === 1 ? "" : "s"} in this incident
+              are closed.
+            </div>
+            <div className="truncate text-xs text-amber-800/80">
+              {incidentClusterInfo.title}
+            </div>
+          </div>
+          <Link
+            href={showClosedHref}
+            scroll={false}
+            className="shrink-0 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+          >
+            Show closed tickets
+          </Link>
+          <Link
+            href="/incidents"
+            className="shrink-0 text-xs font-medium text-amber-900 underline-offset-2 hover:underline"
+          >
+            Back to incidents
+          </Link>
+        </div>
+      )}
 
       {/* Three-pane Inbox view ------------------------------------
           Responsive behavior:
@@ -184,7 +268,7 @@ export function TicketsShell({
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-3">
-            {prefs.view === "kanban" ? (
+            {effectiveView === "kanban" ? (
               <KanbanBoard
                 tickets={visible}
                 users={users}
