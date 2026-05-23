@@ -10,6 +10,10 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Agent Support",
   description: "Bilingual WhatsApp support dashboard",
+  // Deploy marker — used as a sanity check that Railway is actually
+  // rebuilding the dashboard on push. Bump if you suspect the deploy
+  // is stuck on a stale image.
+  other: { "x-app-build": "2026-05-23-bilingual-english-default" },
 };
 
 export default function RootLayout({
