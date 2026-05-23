@@ -121,9 +121,10 @@ cd agent-support-platform/apps/api
 npx vitest run --config vitest.config.ts
 ```
 
-111 tests across 12 files covering: the inbound message pipeline, all five
+124 tests across 13 files covering: the inbound message pipeline, all five
 Claude integrations, incident clustering, KB scoring, webhook signature
-validation, role guards, and HTTP-level route contracts.
+validation, role guards, HTTP-level route contracts, and the Prisma
+retry helper (Neon auto-suspend recovery).
 
 ## License
 

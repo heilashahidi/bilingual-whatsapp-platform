@@ -48,6 +48,16 @@ Everything else is DB writes against Neon and finishes in tens of ms.
 | Ticket + Message inserts | < 20 ms total | Two indexed writes |
 | Socket.IO broadcast | < 5 ms | In-process emit |
 
+**Neon free-tier auto-suspend.** Neon's free tier puts the compute to
+sleep after ~5 minutes of inactivity. The first DB call after suspension
+fails with `SqlState(E57P01)` and Neon wakes the database in
+~100–500 ms. To absorb this, the Prisma client is wrapped with a
+single-retry helper (`apps/api/src/services/database.ts` →
+`withPrismaRetry`) that catches the connection-terminated error,
+sleeps 1.5 s, and retries the operation. Net effect on the measured
+median above: identical for the warm case; first-after-idle requests
+take ~1.5–2 s instead of failing.
+
 **End-to-end median: ~1.6 s** for a non-English inbound message that
 requires both translation and classification. Twilio's own ingress
 (phone → carrier → Twilio → our webhook) adds ~200–500 ms on top of

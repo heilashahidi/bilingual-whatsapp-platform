@@ -66,8 +66,8 @@ List tickets with filtering, sorting, and pagination.
 | `category` | string | — | Filter: `bug_report`, `operational_complaint`, `feature_request`, `question`, `other` |
 | `country` | string | — | Filter by agent's country: `HT`, `DO`, `CD` |
 | `assignedTo` | string | — | Filter by assigned internal user ID |
-| `limit` | number | 50 | Results per page |
-| `offset` | number | 0 | Pagination offset |
+| `limit` | number | 50 | Results per page. Must be an integer in `[1, 200]` — returns 400 otherwise. |
+| `offset` | number | 0 | Pagination offset. Must be a non-negative integer — returns 400 otherwise. |
 
 **Response:**
 ```json
