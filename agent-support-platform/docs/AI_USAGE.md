@@ -39,66 +39,112 @@ Every code change was reviewed before being committed. The reviewer:
 
 No code was committed without human inspection.
 
-### Design assets
-
-Two visual design handoffs were produced separately using Claude's design
-tooling and dropped in as `handoff/` and `handoff 2/`. Each contained TSX
-component drop-ins for the kanban refresh and the v2 features (list view,
-new-ticket modal, UI prefs). Claude Code applied them, integrated them
-with the existing data flow (drawer pattern, realtime, auth), and added
-the backend endpoints the new UI required.
-
-The README.md in each handoff folder documents what was authored by
-design vs what was extended in integration.
-
 ## 2. AI used in the production runtime
 
-The shipped platform calls two AI APIs at runtime, both Anthropic.
+The shipped platform calls Anthropic's Claude Haiku 4.5
+(`claude-haiku-4-5-20251001`) across **five distinct surfaces**. Each one
+is fail-silent: missing `ANTHROPIC_API_KEY`, non-OK API responses, and
+malformed JSON all degrade gracefully without breaking the request that
+triggered them.
 
-### Translation (Claude Haiku 4.5)
+### 2.1 Translation
 
-- File: `apps/api/src/integrations/translation.ts` → `translateWithClaude`
-- Triggered on every inbound WhatsApp message (translate agent → English)
-  and every outbound dashboard reply (translate English → agent's
+- **File:** `apps/api/src/integrations/translation.ts` → `translateWithClaude`
+- **Triggered on:** every inbound WhatsApp message (agent → English)
+  and every outbound dashboard reply (English → the agent's *detected*
+  conversation language, which may differ from their registered
   preferredLanguage).
-- Prompt asks for strict JSON output with three fields:
-  `translatedText`, `detectedLanguage`, `confidence`. Rules in the prompt:
-  preserve product names and error strings literally; if source matches
-  target language, return unchanged with confidence 1.0; keep tone.
-- Languages supported: English, Haitian Creole (ht), French (fr),
-  Spanish (es).
-- Latency: ~300–500 ms p50 per call.
-- Cost: ~$0.0001 per translation at Haiku rates.
-- Fallback: a stub translator (`translateStub`) runs when
-  `USE_REAL_TRANSLATION` is unset or the API call fails. The stub does
-  keyword-based language detection and passes the text through unchanged.
+- **Optimization:** when the resolved target language is English, the
+  outbound path skips the Claude call entirely. Operators replying in
+  English to an English-speaking agent never burn a translation
+  round-trip.
+- **Prompt shape:** asks for strict JSON `{ translatedText,
+  detectedLanguage, confidence }`. Rules: preserve product names + error
+  strings literally; if source matches target, return unchanged with
+  confidence 1.0; keep tone (a panicked agent stays panicked).
+- **Languages:** English, Haitian Creole (ht), French (fr), Spanish (es).
+- **Latency:** ~660–740 ms p50 per call (see `docs/PERFORMANCE.md §2`).
+- **Cost:** ~$0.0001 per translation at Haiku rates.
+- **Fallback:** `translateStub` keyword-based detector that passes text
+  through unchanged.
 
-### Classification (Claude Haiku 4.5)
+### 2.2 Classification
 
-- File: `apps/api/src/integrations/classification.ts` → `classifyWithLLM`
-- Triggered on every inbound message after translation.
-- Prompt includes category definitions (bug_report / operational_complaint
-  / feature_request / question / other), a severity rubric, product-area
-  enum, and example messages. Output is strict JSON: category, severity,
-  tags, productArea, confidence, likelyNetwork.
-- Used to set the ticket's severity, route to a product area, and feed
-  the kanban filter taxonomy.
-- Cost: ~$0.0002 per classification.
-- Fallback: a keyword-based stub (`classifyStub`) runs when
-  `USE_REAL_CLASSIFICATION` is unset, with simple regex rules over
-  English text.
+- **File:** `apps/api/src/integrations/classification.ts` → `classifyWithLLM`
+- **Triggered on:** every inbound message after translation.
+- **Prompt shape:** strict JSON `{ category, severity, tags, productArea,
+  confidence, likelyNetwork }`. Includes category definitions
+  (bug_report / operational_complaint / feature_request / question /
+  other), a severity rubric, the product-area enum, and example messages.
+- **Used for:** ticket severity assignment, product-area routing,
+  filter-taxonomy population.
+- **Latency:** ~700 ms p50.
+- **Cost:** ~$0.0002 per classification.
+- **Fallback:** `classifyStub` keyword regex.
+
+### 2.3 Reply drafts (operator-facing)
+
+- **File:** `apps/api/src/services/reply-suggester.ts` → `suggestReplies`
+- **Endpoint:** `POST /api/tickets/:id/suggest-replies`
+- **Triggered on:** dashboard composer opening a ticket (and on demand
+  via a regenerate button).
+- **Input:** last 8 messages of the conversation + ticket category /
+  severity / tags + top 2 pinned KB suggestions.
+- **Output:** three candidate reply drafts varying in tone (direct,
+  empathetic, investigative). Each 1–3 sentences, written in English.
+  The operator picks one, edits in the textarea, and hits send — drafts
+  are never sent automatically.
+- **Failure behavior:** route always returns 200 with an empty list when
+  Claude is unavailable, so the dashboard simply hides the suggestions
+  block instead of breaking the ticket page.
+
+### 2.4 Incident summaries
+
+- **File:** `apps/api/src/services/incident-summarizer.ts` → `summarizeIncident`
+- **Triggered on:** new incident formation by the clusterer
+  (`incident-clusterer.ts`).
+- **Input:** all contributing tickets' first inbound messages + branch /
+  region / tag metadata.
+- **Output:** rewrites the mechanical incident title ("Bug Report surge
+  — Haiti") into something specific ("Login screen frozen across HT
+  branches"), plus a 1–3 sentence root-cause hypothesis with a
+  suggested next investigation step. Stored on `Incident.title` and
+  `Incident.rootCause`.
+- **Fire-and-forget:** runs after the incident is created with the
+  mechanical title, so a slow Claude call never blocks clustering.
+  Socket events are re-emitted after the rewrite so the dashboard
+  refetches and shows the upgraded title.
+
+### 2.5 KB article drafts
+
+- **File:** `apps/api/src/services/kb-drafter.ts` → `draftKbArticle`
+  (called from `kb-indexer.ts` `indexResolvedTicket`)
+- **Triggered on:** ticket resolution with a non-empty
+  `resolutionSummary`.
+- **Input:** full conversation thread + operator's resolution summary +
+  ticket metadata.
+- **Output:** complete KB article draft `{ title, problemDescription,
+  resolutionText, resolutionTextShort, tags }`. Stored as a
+  `KnowledgeArticle` with `status: "draft"` for operator review on
+  `/knowledge?status=draft`.
+- **Two-stage fallback:** if Claude fails, `kb-indexer` falls back to
+  its mechanical generator (first inbound as problem +
+  resolutionSummary + concatenated outbound responses). KB drafts
+  always get created regardless of LLM availability.
 
 ### What's intentionally not LLM-driven
 
-The following look AI-adjacent but are deterministic:
-
-- **Knowledge base similarity search** — uses category + tag overlap
-  scoring (`apps/api/src/services/kb-search.ts`), not embedding-based
-  similarity. The `KnowledgeArticle.embedding` pgvector column exists in
-  the schema but is currently unused. The interface is set up so swapping
-  to OpenAI / Cohere embeddings is a single-function replacement.
-- **Incident clustering** — model and UI exist; the auto-clustering worker
-  is unbuilt. Manual incident linking from the dashboard works today.
+- **Incident clustering** itself is deterministic — same-country +
+  same-category in a 30-min window with a 3-ticket threshold.
+  Only the *summary* of a formed incident uses Claude.
+- **KB similarity search** for pinning suggestions onto new tickets
+  (`apps/api/src/services/kb-search.ts`) uses category + tag overlap
+  scoring, not embeddings. The `KnowledgeArticle.embedding` pgvector
+  column exists for a future swap to embedding-based similarity but
+  is currently unused.
+- **Translation language detection** is delegated to Claude inside the
+  translation call (the `detectedLanguage` field), not a separate
+  detection pass.
 
 ## Environment variables that gate AI behavior
 
@@ -115,21 +161,30 @@ integration boundary.
 
 ## Data sent to Anthropic
 
-When the real classification/translation paths are enabled, Claude Haiku
-receives:
-
-- The text body of each WhatsApp message (translation).
-- The English-translated text of each inbound message (classification).
-- A static system prompt describing the categorization rubric, language
-  pairs, and JSON output format.
-
-**No PII is sent beyond the message body itself.** Agent names, phone
-numbers, branch information, and ticket IDs are never included in the
-LLM prompts. The dashboard's display of that metadata is handled
-client-side.
-
 The Anthropic API is called from the API server only; the browser
-never talks to Anthropic directly.
+never talks to Anthropic directly. What gets included depends on which
+of the five surfaces is invoked:
+
+| Surface | Data included in the prompt |
+|---|---|
+| Translation | Message body text only. |
+| Classification | English-translated message body + a static rubric prompt. |
+| Reply drafts | Last 8 messages of the conversation, agent's first name, branch name (e.g., "Cap-Haïtien Central"), country code, ticket category/severity/tags, top 2 pinned KB articles. **Phone numbers are never included.** |
+| Incident summary | First inbound message of each contributing ticket (up to ~10 lines total), branch names, region names, country codes, classifier tags. |
+| KB article draft | Full ticket conversation, operator's free-text resolution summary, classifier tags. **Agent names and phone numbers are excluded.** |
+
+**What is never sent to Anthropic, on any surface:**
+- Phone numbers
+- WhatsApp message IDs (whatsappMessageId)
+- Internal user emails or IDs
+- Auth tokens or session data
+- Twilio account credentials
+
+Branch names and country codes are sent for the surfaces where they
+materially improve the output (e.g., the reply suggester needs to
+generate French replies for DRC agents). Operators reviewing the demo
+of any specific prompt can grep the relevant `services/*.ts` file for
+the `prompt` string to see the exact template.
 
 ## Reproducibility
 

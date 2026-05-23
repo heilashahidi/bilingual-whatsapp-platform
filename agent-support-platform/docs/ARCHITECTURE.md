@@ -34,6 +34,138 @@ Every message flows through the pipeline: **bot intercept → ingest → transla
 
 ## 2. High-Level Architecture
 
+### 2.0 System diagram (current implementation)
+
+```mermaid
+flowchart TB
+    %% ─── External actors ───────────────────────────────
+    subgraph Field["Field agents · HT / DO / CD"]
+        WA["WhatsApp<br/>(Creole · French · Spanish)"]
+    end
+    subgraph US["US operations team"]
+        Browser["Browser<br/>(Next.js dashboard SSR + client)"]
+    end
+
+    %% ─── Third-party gateways ──────────────────────────
+    subgraph Twilio["Twilio Sandbox"]
+        TW["WhatsApp gateway<br/>(signed webhooks)"]
+    end
+
+    %% ─── Compute (deployed in parallel on Fly + Railway) ─
+    subgraph Compute["Compute — Fly.io (primary) + Railway (parallel)"]
+        direction TB
+
+        subgraph Dashboard["Dashboard service · Next.js 14"]
+            Tickets["/tickets · /incidents · /knowledge"]
+            SocketC["socket.io-client<br/>(ticket:changed listener)"]
+            NextAuth["NextAuth + Google OAuth"]
+        end
+
+        subgraph API["API service · Express + Socket.IO (single machine)"]
+            direction TB
+            WH["POST /webhooks/whatsapp<br/>POST /webhooks/whatsapp/status<br/>(Twilio signature verify)"]
+            REST["REST · /api/tickets · /agents<br/>/incidents · /knowledge<br/>(Bearer JWT, role guards on PATCH)"]
+            SockS["Socket.IO server<br/>emitTicketEvent → ticket:changed"]
+
+            subgraph Pipeline["Inbound message pipeline"]
+                direction TB
+                P1["1. Dedup by whatsappMessageId"]
+                P2["2. Find / auto-register agent"]
+                P3["3. Translate → English"]
+                P4["4. Classify (category · severity · tags)"]
+                P5["5. Find or create ticket"]
+                P6["6. Persist message + SLA"]
+                P7["7. KB suggestion search<br/>(category + tag scoring)"]
+                P8["8. Slack notify (critical/high)"]
+                P9["9. Realtime broadcast"]
+                P10["10. Incident cluster check<br/>(country + category + 30-min window)"]
+            end
+
+            Outbound["Outbound · sendAgentResponse<br/>(target = last inbound's detected lang,<br/>skip translation if target = EN)"]
+
+            subgraph AI["AI surfaces (Claude Haiku 4.5)"]
+                direction LR
+                AI1["Translation"]
+                AI2["Classification"]
+                AI3["Reply drafts<br/>(per ticket, on demand)"]
+                AI4["Incident summary<br/>(per new cluster)"]
+                AI5["KB article draft<br/>(on resolve)"]
+            end
+        end
+    end
+
+    %% ─── Managed data layer ───────────────────────────
+    subgraph Data["Managed data"]
+        NEON[(Neon Postgres<br/>tickets · messages · incidents · KB)]
+        UPSTASH[(Upstash Redis<br/>reserved for socket.io adapter)]
+    end
+
+    %% ─── External APIs ────────────────────────────────
+    subgraph External["External APIs"]
+        CLAUDE{{"Anthropic API<br/>Claude Haiku 4.5"}}
+        GOOGLE{{"Google OAuth"}}
+        SLACK{{"Slack webhook"}}
+    end
+
+    %% ─── Inbound flow (red-tinted) ────────────────────
+    WA -- "sends" --> TW
+    TW -- "POST webhook" --> WH
+    WH --> P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> P8 --> P9 --> P10
+    P3 -. "Claude" .-> AI1
+    P4 -. "Claude" .-> AI2
+    AI1 --> CLAUDE
+    AI2 --> CLAUDE
+    P5 --> NEON
+    P6 --> NEON
+    P7 --> NEON
+    P9 --> SockS
+    P10 --> NEON
+    P10 -. "Claude" .-> AI4
+    AI4 --> CLAUDE
+    P8 --> SLACK
+
+    %% ─── Browser side ─────────────────────────────────
+    Browser -- "page load" --> Tickets
+    Tickets -- "SSR fetch (Bearer JWT)" --> REST
+    NextAuth -- "OAuth" --> GOOGLE
+    Browser -. "wss" .-> SockS
+    SockS -. "ticket:changed" .-> SocketC
+    REST --> NEON
+
+    %% ─── Outbound (US → field agent) ──────────────────
+    Tickets -- "POST /messages" --> REST
+    REST --> Outbound
+    Outbound -. "Claude (if target ≠ EN)" .-> AI1
+    Outbound -- "Twilio API" --> TW
+    TW -- "deliver" --> WA
+
+    %% ─── AI surfaces driven by operator actions ───────
+    Tickets -- "POST /suggest-replies" --> REST
+    REST -. "Claude" .-> AI3
+    AI3 --> CLAUDE
+    Tickets -- "POST /resolve" --> REST
+    REST -. "Claude" .-> AI5
+    AI5 --> CLAUDE
+    AI5 --> NEON
+
+    %% Styling
+    classDef ai fill:#ede9fe,stroke:#7c3aed,color:#5b21b6
+    classDef data fill:#dcfce7,stroke:#16a34a,color:#15803d
+    classDef external fill:#fef3c7,stroke:#d97706,color:#92400e
+    class AI,AI1,AI2,AI3,AI4,AI5 ai
+    class NEON,UPSTASH data
+    class CLAUDE,GOOGLE,SLACK external
+```
+
+**How to read this:**
+
+- **Solid arrows** are request/response.
+- **Dotted arrows** are async or out-of-band (Socket.IO events, Claude calls fired alongside the main path).
+- **Violet boxes** mark every place Claude Haiku is invoked. There are five distinct surfaces — translation and classification on every inbound message, plus three operator-facing surfaces (reply drafts, incident summaries, KB article drafts).
+- **Green cylinders** are managed data — Neon and Upstash. Upstash Redis is provisioned but not yet wired into the Socket.IO adapter (see §4.5 for the migration path).
+- **Yellow hexagons** are external APIs we depend on.
+- The API runs **one machine on each platform** today; horizontal scaling requires the Redis adapter (§4.5).
+
 ### 2.1 Component Map
 
 | Layer | Components | Responsibility |

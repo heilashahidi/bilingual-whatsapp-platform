@@ -2,23 +2,31 @@
 
 A real-time support bridge connecting 1,000+ field agents across Haiti, Dominican Republic, and the Democratic Republic of Congo with a US-based operations and engineering team. Agents report issues through WhatsApp in their native language; the US team manages everything from an English-language web dashboard. Translation, classification, and routing happen transparently in between.
 
+**Live deploys** (same code, same Neon database):
+
+| | Fly.io (primary) | Railway (parallel) |
+|---|---|---|
+| API | <https://heilashahidi.fly.dev> | <https://api-production-091a.up.railway.app> |
+| Dashboard | <https://asp-dashboard-heila.fly.dev> | <https://dashboard-production-5d4e.up.railway.app> |
+
 ## The Problem
 
 Field agents encounter technical issues (app crashes, transaction failures, connectivity problems), have operational complaints, and surface feature requests — but there is no structured channel for these to reach the US team. Issues go unreported for days or weeks. When they do surface, it's through fragmented informal channels that make triage impossible.
 
 ## The Solution
 
-Meet agents where they already are (WhatsApp) and give the US team a purpose-built dashboard. The platform automatically translates between Haitian Creole/French/Spanish and English, classifies and prioritizes every message, detects systemic incidents across regions, resolves common issues instantly via a self-service bot, and builds a knowledge base from every resolved ticket.
+Meet agents where they already are (WhatsApp) and give the US team a purpose-built dashboard. The platform automatically translates between Haitian Creole / French / Spanish and English, classifies and prioritizes every message, detects systemic incidents across regions, and builds a knowledge base from every resolved ticket.
 
 ## Key Features
 
 - **WhatsApp ↔ Dashboard bridge** with transparent real-time translation
-- **Automated classification** (category, severity, tags) via lightweight LLM
-- **Incident clustering** — detects when multiple agents report the same systemic issue
-- **Self-service WhatsApp bot** — resolves known issues instantly without human intervention
-- **Knowledge base** — learns from every resolved ticket, feeds the bot and suggests solutions
-- **Haiti/DRC connectivity awareness** — extended SLAs, delivery tracking, outage detection, message optimization for 2G networks
-- **SLA tracking** with country-specific thresholds
+- **Five Claude Haiku surfaces:** translation, classification, AI-suggested reply drafts, incident summaries, and KB article drafts — see [AI_USAGE.md](agent-support-platform/docs/AI_USAGE.md)
+- **Front-style three-pane Inbox** (sidebar · conversation list · persistent detail) with @-mentions on internal notes
+- **Automatic incident clustering** — detects when 3+ tickets in the same country and category arrive within 30 minutes
+- **Knowledge base** that learns from every resolved ticket and suggests fixes on new ones
+- **Real-time updates** via Socket.IO — new tickets, status changes, and assignments appear without refresh
+- **Haiti / DRC connectivity awareness** — extended SLAs, delivery tracking, per-country message length caps for 2G networks
+- **SLA tracking** with country-specific thresholds and per-ticket SLA rings
 
 ## Quick Start
 
@@ -26,12 +34,16 @@ Meet agents where they already are (WhatsApp) and give the US team a purpose-bui
 
 - Node.js 20+, pnpm, Docker & Docker Compose
 - [Twilio account](https://www.twilio.com/try-twilio) (free trial)
-- [ngrok](https://ngrok.com/)
+- [ngrok](https://ngrok.com/) for exposing the local webhook
 
 ### Setup (15 minutes)
 
+All commands run from `agent-support-platform/` (the monorepo root).
+
 ```bash
-# Install dependencies
+cd agent-support-platform
+
+# Install dependencies (pnpm workspaces)
 pnpm install
 
 # Start Postgres (pgvector) + Redis
@@ -39,58 +51,80 @@ docker compose up -d
 
 # Configure environment
 cp .env.example apps/api/.env
-# Edit apps/api/.env with your Twilio credentials
+# Edit apps/api/.env with your Twilio + Anthropic credentials
 
 # Initialize database
-cd apps/api
-npx prisma migrate dev --name init
-npx prisma db seed
-cd ../..
+pnpm --filter @asp/api exec prisma migrate deploy
+pnpm --filter @asp/api exec prisma db seed
 
-# Start the API server
-cd apps/api && pnpm dev
+# Start the API server (terminal 1)
+pnpm --filter @asp/api dev
 
-# In a new terminal — expose for Twilio
+# Start the dashboard (terminal 2)
+pnpm --filter @asp/dashboard dev
+
+# Expose the API webhook (terminal 3)
 ngrok http 3001
 ```
 
-Paste the ngrok HTTPS URL into your [Twilio WhatsApp Sandbox config](https://console.twilio.com/us1/develop/sms/try-it-out/whatsapp-learn) as the webhook URL, send a message from your phone, and watch the pipeline process it.
+Paste the ngrok HTTPS URL into your [Twilio WhatsApp Sandbox config](https://console.twilio.com/us1/develop/sms/try-it-out/whatsapp-learn) as the webhook URL (with `/webhooks/whatsapp` appended), send a message from your phone, and watch the pipeline process it.
 
-See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the full development guide.
+See [docs/CONTRIBUTING.md](agent-support-platform/docs/CONTRIBUTING.md) for the full development guide, [docs/DEPLOYMENT.md](agent-support-platform/docs/DEPLOYMENT.md) for production setup.
 
 ## Documentation
 
 | Document | Description |
 |---|---|
-| [Tech Stack](docs/TECH_STACK.md) | Every technology choice and why |
-| [Architecture](docs/ARCHITECTURE.md) | System design, message flow, component breakdown |
-| [API Reference](docs/API.md) | All endpoints with request/response examples |
-| [Data Model](docs/DATA_MODEL.md) | Database schema, relationships, and field descriptions |
-| [Deployment](docs/DEPLOYMENT.md) | Environments, infrastructure, CI/CD |
-| [Contributing](docs/CONTRIBUTING.md) | Dev setup, coding standards, PR process |
-| [Connectivity](docs/CONNECTIVITY.md) | Haiti/DRC latency handling and resilience design |
-| [Translation](docs/TRANSLATION.md) | Translation pipeline, glossary management, language support |
-| [Runbooks](docs/RUNBOOKS.md) | Operational playbooks for incidents and common issues |
-| [Changelog](CHANGELOG.md) | Version history |
+| [PRD](agent-support-platform/docs/PRD.md) | The original product requirements |
+| [Tech Stack](agent-support-platform/docs/TECH_STACK.md) | Every technology choice and why |
+| [Architecture](agent-support-platform/docs/ARCHITECTURE.md) | System diagram, message flow, component breakdown |
+| [API Reference](agent-support-platform/docs/API.md) | All endpoints with request/response examples |
+| [Data Model](agent-support-platform/docs/DATA_MODEL.md) | Database schema, relationships, field descriptions |
+| [Deployment](agent-support-platform/docs/DEPLOYMENT.md) | Fly + Railway setup, secrets, CI/CD |
+| [Performance](agent-support-platform/docs/PERFORMANCE.md) | Measured benchmarks against the six PRD metrics |
+| [AI Usage](agent-support-platform/docs/AI_USAGE.md) | All five Claude integrations with prompts + data flow |
+| [Translation](agent-support-platform/docs/TRANSLATION.md) | Translation pipeline, glossary management, language support |
+| [Connectivity](agent-support-platform/docs/CONNECTIVITY.md) | Haiti/DRC latency handling and resilience design |
+| [Runbooks](agent-support-platform/docs/RUNBOOKS.md) | Operational playbooks for incidents and common issues |
+| [Contributing](agent-support-platform/docs/CONTRIBUTING.md) | Dev setup, coding standards, PR process |
+| [Changelog](agent-support-platform/CHANGELOG.md) | Version history |
 
 ## Project Structure
 
 ```
 agent-support-platform/
 ├── apps/
-│   ├── api/                    # Express API server
+│   ├── api/                    # Express + Prisma + Socket.IO API
 │   │   ├── src/
-│   │   │   ├── routes/         # HTTP endpoints (webhooks, tickets, agents)
-│   │   │   ├── services/       # Business logic (pipeline, normalizer, database)
-│   │   │   ├── integrations/   # External services (Twilio, translation, LLM)
-│   │   │   └── workers/        # Queue consumers (translate, classify, cluster)
+│   │   │   ├── routes/         # HTTP endpoints (webhooks, tickets, incidents, knowledge, agents)
+│   │   │   ├── services/       # Business logic (pipeline, clusterer, summarizer, drafter, audit)
+│   │   │   ├── integrations/   # External services (Twilio, Claude translation/classification)
+│   │   │   └── middleware/     # auth (NextAuth JWT verify, requireRole)
 │   │   └── prisma/             # Schema and migrations
-│   └── dashboard/              # React frontend (Next.js)
+│   └── dashboard/              # Next.js 14 App Router frontend
+│       └── app/
+│           ├── tickets/        # Three-pane Inbox + kanban + list views
+│           ├── incidents/      # Auto-clustered incidents page
+│           ├── knowledge/      # KB article approval workflow
+│           └── signin/         # NextAuth + Google OAuth
 ├── packages/
-│   └── shared/                 # Shared types, constants, SLA configs
-├── docs/                       # Project documentation
-└── infra/                      # Infrastructure as code
+│   └── shared/                 # Shared TS types, constants, SLA configs
+├── docs/                       # 12 docs files covering PRD compliance
+├── scripts/                    # Fly secrets helpers
+├── fly.api.toml + fly.dashboard.toml      # Fly.io deploy configs
+└── railway.api.json + railway.dashboard.json   # Railway deploy configs
 ```
+
+## Testing
+
+```bash
+cd agent-support-platform/apps/api
+npx vitest run --config vitest.config.ts
+```
+
+111 tests across 12 files covering: the inbound message pipeline, all five
+Claude integrations, incident clustering, KB scoring, webhook signature
+validation, role guards, and HTTP-level route contracts.
 
 ## License
 
