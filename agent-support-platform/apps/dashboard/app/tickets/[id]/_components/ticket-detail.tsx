@@ -134,7 +134,7 @@ function NoteBubble({ note }: { note: Note }) {
           <span>·</span>
           <span>{formatTime(note.createdAt)}</span>
           <span className="ml-auto text-[10px] italic text-amber-700">
-            not sent to agent
+            not sent to field agent
           </span>
         </div>
         <div className="whitespace-pre-wrap text-sm text-amber-950">

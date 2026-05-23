@@ -238,7 +238,7 @@ export function ResponseComposer({
     <div className={wrapperClass}>
       <div className="mb-3 flex gap-1 border-b border-slate-200">
         <TabButton active={!isNote} onClick={() => setMode("reply")}>
-          Reply to agent
+          Reply via WhatsApp
         </TabButton>
         <TabButton active={isNote} accent="amber" onClick={() => setMode("note")}>
           Internal note
@@ -278,13 +278,15 @@ export function ResponseComposer({
                   <button
                     type="button"
                     onClick={() => useSuggestion(s)}
-                    className="group flex w-full items-start gap-2 rounded border border-violet-200/80 bg-white px-2.5 py-1.5 text-left text-[13px] text-slate-700 transition hover:border-violet-400 hover:bg-violet-50"
+                    className="group flex w-full items-start gap-2.5 rounded border border-violet-200/80 bg-white px-2.5 py-2 text-left text-[13px] text-slate-700 transition hover:border-violet-400 hover:bg-violet-50"
                   >
-                    <span className="mt-0.5 shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-700">
+                    {/* Fixed-width tone tag so all reply bodies line up
+                        vertically regardless of how long each tone label is. */}
+                    <span className="mt-0.5 inline-flex w-[88px] shrink-0 items-center justify-center rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
                       {s.tone}
                     </span>
                     <span className="flex-1 leading-snug">{s.text}</span>
-                    <span className="mt-0.5 shrink-0 text-[10px] text-violet-400 opacity-0 transition group-hover:opacity-100">
+                    <span className="mt-0.5 shrink-0 self-center text-[10px] text-violet-400 opacity-0 transition group-hover:opacity-100">
                       use →
                     </span>
                   </button>
@@ -302,7 +304,7 @@ export function ResponseComposer({
       >
         {isNote
           ? "Team-only note — type @ to mention a teammate"
-          : "Reply (English — will be translated for the agent)"}
+          : "Reply (English — will be translated for the field agent)"}
       </label>
 
       <div className="relative">

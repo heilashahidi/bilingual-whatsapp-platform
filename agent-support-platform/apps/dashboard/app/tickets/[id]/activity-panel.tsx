@@ -8,7 +8,7 @@ const ACTION_VERB: Record<AuditAction, string> = {
   assigned: "assigned",
   unassigned: "unassigned",
   tagged: "updated tags",
-  message_sent: "replied to the agent",
+  message_sent: "replied to the field agent",
   note_added: "added an internal note",
   resolved: "resolved the ticket",
   deleted: "deleted the ticket",
