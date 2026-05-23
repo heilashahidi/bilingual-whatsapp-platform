@@ -1,25 +1,20 @@
 # Deployment Guide
 
-This guide covers how to run the platform locally and how the live deployment
-on Fly.io is set up. The production stack is intentionally small:
+This guide covers how to run the platform locally and how the live
+deployment on Railway is set up. The production stack is intentionally
+small:
 
 | Layer | Service | Why |
 |---|---|---|
-| Compute (API + dashboard) | **Fly.io** | One config per app, Docker-native, regional placement, single CLI for deploys + secrets |
+| Compute (API + dashboard) | **Railway** | One config file per service (`railway.api.json`, `railway.dashboard.json`), GitHub-integrated auto-deploys, generous free tier with always-on machines that don't sleep |
 | PostgreSQL | **Neon** | Managed Postgres with branching; free tier covers our load |
 | Redis | **Upstash** | Serverless Redis; pay-per-request fits a low-baseline workload |
 | WhatsApp | **Twilio Sandbox** | Fastest path to a real bidirectional channel without Meta business verification |
-| Translation + classification | **Anthropic Claude Haiku** | One vendor for both jobs; latency around 700–1100 ms |
-| Realtime | **Socket.IO** (hosted inside the API) | No separate broker needed; the API also serves WebSocket upgrades |
+| Translation + classification + reply drafts + incident summaries + KB drafts | **Anthropic Claude Haiku 4.5** | One vendor for all five AI surfaces; latency around 700–1100 ms per call |
+| Realtime | **Socket.IO** (hosted inside the API process) | No separate broker needed; the API also serves WebSocket upgrades |
 | Auth | **NextAuth + Google OAuth** | Dashboard sessions; the API verifies a NextAuth-signed JWT (HS256) |
 | Notifications | **Slack Incoming Webhook** | Single channel; webhook URL kept in secrets |
-| CI/CD | **GitHub Actions** | `.github/workflows/deploy.yml` deploys both Fly apps on push to `main` |
-
-> **Note on Railway.** The PRD lists Railway as the deployment target under
-> §4.1. The platform's primary deploy is Fly.io (rationale: `min_machines_running = 1`
-> on the free tier keeps the API warm for Twilio webhook retries). A
-> parallel Railway deploy is also supported — see §8 below — so the same
-> code base runs unchanged on either platform.
+| CI/CD | **Railway GitHub integration** + **GitHub Actions `ci.yml`** | Railway auto-deploys both services on push to `main`; GitHub Actions runs typecheck + vitest on every PR |
 
 ---
 
@@ -34,6 +29,8 @@ on Fly.io is set up. The production stack is intentionally small:
 - A Twilio account with the WhatsApp Sandbox enabled
 
 ### Bring up the data services
+
+From `agent-support-platform/`:
 
 ```bash
 docker compose up -d        # spins up Postgres (with pgvector) + Redis
@@ -103,6 +100,11 @@ Then:
 3. Restart the API so it picks up the new `WEBHOOK_BASE_URL`
    (used in the Twilio signature check).
 
+> ⚠️ Note: switching the Twilio webhook to your ngrok URL means inbound
+> messages stop reaching production until you switch it back. Either use
+> a separate test Twilio account for local dev, or only flip the URL
+> when actively testing.
+
 ### Optional: Google sign-in locally
 
 If you want to test the auth path locally, run:
@@ -113,44 +115,39 @@ If you want to test the auth path locally, run:
 
 It prompts for your Google OAuth Client ID + Secret, generates a shared
 `NEXTAUTH_SECRET`, writes `apps/dashboard/.env.local`, and appends the
-secret to `apps/api/.env`. The same script stages the secrets on both
-Fly apps (see §3 below), so you only run it once per credential rotation.
+secret to `apps/api/.env`.
 
 ---
 
-## 2. Production deployment (Fly.io)
+## 2. Production deployment (Railway)
 
-There are two Fly apps:
+Two services in one Railway project, both backed by the same GitHub repo:
 
-| App | Domain | Config file | Memory |
+| Service | URL | Config file | Dockerfile |
 |---|---|---|---|
-| API + Socket.IO + webhooks | `heilashahidi.fly.dev` | `fly.api.toml` | 512 MB, 1 shared CPU, `min_machines_running = 1` |
-| Dashboard (Next.js) | `asp-dashboard-heila.fly.dev` | `fly.dashboard.toml` | 1 GB, 1 shared CPU, auto-stop |
+| API + Socket.IO + webhooks | <https://api-production-091a.up.railway.app> | `railway.api.json` | `apps/api/Dockerfile` |
+| Dashboard (Next.js) | <https://dashboard-production-5d4e.up.railway.app> | `railway.dashboard.json` | `apps/dashboard/Dockerfile` |
 
-The API has `min_machines_running = 1` because Twilio retries webhooks only
-once on timeout — a cold start risks dropping inbound messages. The
-dashboard auto-stops when idle; the cold start there only affects an
-already-signed-in operator opening a stale tab.
+### 2.1 One-time bootstrap
 
-### One-time bootstrap
+1. Install the Railway CLI (`npm i -g @railway/cli`) and run `railway login`.
+2. From the Railway dashboard: **New Project → Deploy from GitHub repo →
+   select `bilingual-whatsapp-platform`**. Skip the auto-detect prompt
+   — we configure two services manually.
+3. Create **two services** from the same repo:
+   - **api**: Settings → Service → Root Directory `agent-support-platform`,
+     Config-as-code path `railway.api.json`
+   - **dashboard**: same Root Directory, Config-as-code path
+     `railway.dashboard.json`
+4. For each service: Settings → Networking → **Generate Domain** (pick
+   port `3001` for api, `3000` for dashboard).
 
-```bash
-# Install flyctl
-brew install flyctl   # or:  curl -L https://fly.io/install.sh | sh
-
-fly auth login
-
-# Create the apps (one-time)
-fly launch --config fly.api.toml --copy-config --no-deploy
-fly launch --config fly.dashboard.toml --copy-config --no-deploy
-```
-
-### Managed data services
+### 2.2 Managed data services
 
 | Service | Where to provision | Credential format |
 |---|---|---|
 | Postgres | [neon.tech](https://neon.tech) — create a project, copy the **Pooled connection string** | `postgresql://user:pass@host/db?sslmode=require` |
-| Redis | [upstash.com](https://upstash.com) — create a Redis database, copy the **Endpoint** with `rediss://` TLS | `rediss://default:pass@host:6379` |
+| Redis | [upstash.com](https://upstash.com) — create a Redis database, copy the **rediss://** TLS endpoint | `rediss://default:pass@host:6379` |
 
 After the Neon database exists, run migrations against it:
 
@@ -158,102 +155,77 @@ After the Neon database exists, run migrations against it:
 DATABASE_URL='<your-neon-url>' pnpm --filter @asp/api exec prisma migrate deploy
 ```
 
-### Set Fly secrets
+### 2.3 Set environment variables
 
-Three scripts in `scripts/` cover all the secrets the apps need. They
-prompt for sensitive values interactively (`read -s`) so nothing lands in
-shell history.
+In each service's **Variables** tab (use **Raw Editor** to paste in
+bulk).
+
+**API service:**
+
+| Variable | Notes |
+|---|---|
+| `DATABASE_URL` | Your Neon pooled connection string |
+| `REDIS_URL` | Your Upstash rediss:// endpoint |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER` | Twilio creds |
+| `WEBHOOK_BASE_URL` | `https://api-production-091a.up.railway.app` (must match the public Railway URL exactly — used in Twilio signature reconstruction) |
+| `USE_REAL_WHATSAPP=true`, `USE_REAL_TRANSLATION=true`, `USE_REAL_CLASSIFICATION=true` | Flip on the real integrations |
+| `ANTHROPIC_API_KEY` | For all five Claude surfaces (translation, classification, reply drafts, incident summaries, KB drafts) |
+| `NEXTAUTH_SECRET` | Must be the EXACT same value as on the dashboard service |
+| `SLACK_WEBHOOK_URL` | Optional — for critical/high ticket notifications |
+| `DASHBOARD_BASE_URL` | `https://dashboard-production-5d4e.up.railway.app` — used in Slack "Open ticket" buttons |
+| `PORT=3001` | Explicit override of Railway's auto-injected PORT |
+
+**Dashboard service:**
+
+| Variable | Notes |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | The Railway API URL — Railway exposes service variables as build args too, so this is inlined into the client bundle automatically |
+| `NEXTAUTH_URL` | The Railway dashboard URL |
+| `NEXTAUTH_SECRET` | Same value as the API service |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | From Google Cloud Console OAuth 2.0 |
+| `PORT=3000` | Explicit override |
+
+> The Google OAuth client must have
+> `https://dashboard-production-5d4e.up.railway.app/api/auth/callback/google`
+> in its **Authorized redirect URIs** list. Without this, sign-in fails
+> with a `redirect_uri_mismatch` error.
+
+### 2.4 Twilio webhook configuration
+
+In the Twilio Sandbox console:
+
+| Field | Value |
+|---|---|
+| WHEN A MESSAGE COMES IN | `https://api-production-091a.up.railway.app/webhooks/whatsapp` (POST) |
+| STATUS CALLBACK URL | `https://api-production-091a.up.railway.app/webhooks/whatsapp/status` (POST) |
+
+The API verifies Twilio's signature on every webhook using
+`WEBHOOK_BASE_URL` — if that env var doesn't match the URL Twilio
+calls, every request returns 403.
+
+### 2.5 Deploy
+
+Railway auto-deploys on every push to `main` via its GitHub
+integration — no extra CI configuration needed.
+
+For manual deploys:
 
 ```bash
-# Twilio + Anthropic + Neon + Upstash + WEBHOOK_BASE_URL
-./scripts/set-fly-api-secrets.sh
-
-# NextAuth + Google OAuth (sets secrets on BOTH Fly apps + local .env files)
-./scripts/set-auth-secrets.sh
-
-# Slack incoming webhook (optional, sets DASHBOARD_BASE_URL too)
-./scripts/set-slack-webhook.sh
+railway link  # one-time link of local repo to the project
+railway up --service api
+railway up --service dashboard
 ```
-
-The full secret set the API needs in production:
-
-| Secret | Where it's used |
-|---|---|
-| `DATABASE_URL` | Prisma client |
-| `REDIS_URL` | (currently unused at runtime, reserved for future workers) |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER` | Inbound signature check, outbound send |
-| `WEBHOOK_BASE_URL` | Reconstructing the URL Twilio signs against |
-| `USE_REAL_WHATSAPP`, `USE_REAL_TRANSLATION`, `USE_REAL_CLASSIFICATION` | All `true` in prod |
-| `ANTHROPIC_API_KEY` | Claude Haiku for translation + classification |
-| `NEXTAUTH_SECRET` | Verifies the dashboard's Bearer JWT |
-| `SLACK_WEBHOOK_URL` | Posts critical/high tickets + mentions |
-| `DASHBOARD_BASE_URL` | "Open ticket" links in Slack messages |
-
-The dashboard needs:
-
-| Secret | Where it's used |
-|---|---|
-| `NEXTAUTH_URL` | OAuth callback URL (e.g. `https://asp-dashboard-heila.fly.dev`) |
-| `NEXTAUTH_SECRET` | Same value as the API |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google OAuth |
-| `NEXT_PUBLIC_API_URL` (build arg) | API origin; baked in at build via `fly.dashboard.toml > [build.args]` |
-
-### Deploy
-
-The CI workflow deploys on every push to `main`, but you can deploy
-manually any time:
-
-```bash
-fly deploy --config fly.api.toml
-fly deploy --config fly.dashboard.toml
-```
-
-Fly builds the Docker image remotely (`--remote-only` in CI), pushes it
-to its registry, and rolls the machines one by one. Deploys typically
-take ~90 seconds end to end.
-
-### Twilio webhook for production
-
-Once the API is live at `heilashahidi.fly.dev`:
-
-1. In the Twilio Sandbox, set the inbound webhook to
-   `https://heilashahidi.fly.dev/webhooks/whatsapp` (HTTP method: POST).
-2. Confirm `WEBHOOK_BASE_URL=https://heilashahidi.fly.dev` is set on the API
-   app (`fly secrets list --config fly.api.toml`). The signature check
-   reconstructs the request URL from this value; if it's wrong, every
-   webhook returns 403.
 
 ---
 
 ## 3. CI/CD
 
-`.github/workflows/deploy.yml` deploys both apps on push to `main`:
-
-```yaml
-jobs:
-  deploy-api:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --config fly.api.toml --remote-only
-        working-directory: agent-support-platform
-        env: { FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }} }
-
-  deploy-dashboard:
-    needs: deploy-api    # API first so NEXT_PUBLIC_API_URL is reachable
-    runs-on: ubuntu-latest
-    steps: …
-```
-
-To enable it:
-
-1. Generate a token: `fly auth token`.
-2. In the GitHub repo, **Settings → Secrets and variables → Actions →
-   New repository secret**: name `FLY_API_TOKEN`, value the token.
-
-`.github/workflows/ci.yml` runs typecheck + vitest on every PR — see that
-file for the full matrix.
+- **`.github/workflows/ci.yml`** runs typecheck + the full vitest
+  suite on every PR. Required to pass before merge.
+- **Deploys** are handled by Railway's GitHub integration directly —
+  every push to `main` triggers a build + deploy for each service that
+  has changed files in its watched path.
+- There is no separate deploy workflow in `.github/workflows/`.
 
 ---
 
@@ -271,9 +243,9 @@ pnpm --filter @asp/api exec prisma migrate dev --name <description>
 DATABASE_URL='<neon-url>' pnpm --filter @asp/api exec prisma migrate deploy
 ```
 
-If you need to mark a migration as already-applied (because the schema
-was created out-of-band, which happens after a `DROP SCHEMA public CASCADE`
-on Neon during a rebuild):
+The API Dockerfile's CMD runs `prisma migrate deploy` on boot, so each
+Railway deploy automatically applies any pending migrations before the
+server starts. If you need to mark a migration as already-applied:
 
 ```bash
 pnpm --filter @asp/api exec prisma migrate resolve --applied <migration_name>
@@ -283,15 +255,19 @@ pnpm --filter @asp/api exec prisma migrate resolve --applied <migration_name>
 
 ## 5. Rollback
 
-```bash
-# List recent releases
-fly releases --config fly.api.toml
+In the Railway dashboard:
 
-# Roll back to a specific image version
-fly deploy --config fly.api.toml --image registry.fly.io/heilashahidi:deployment-<id>
+1. Open the service → **Deployments** tab
+2. Find the previous successful deployment
+3. Click **⋮** → **Rollback to this deployment**
+
+Or via CLI:
+
+```bash
+railway redeploy --service api --deployment <deployment-id>
 ```
 
-If the issue is a bad migration, revert the schema change in a follow-up
+If a bad migration ships, revert the schema change in a follow-up
 migration rather than rolling back the database — Prisma's migration
 history is append-only, and Neon doesn't support point-in-time recovery
 on the free plan.
@@ -303,17 +279,18 @@ on the free plan.
 The API exposes `GET /health`:
 
 ```bash
-curl https://heilashahidi.fly.dev/health
-# { "status": "ok", "timestamp": "2026-05-22T19:35:00.000Z" }
+curl https://api-production-091a.up.railway.app/health
+# { "status": "ok", "timestamp": "2026-05-23T01:27:43.450Z" }
 ```
 
-Fly checks this endpoint as part of every rolling deploy and won't promote
-the new machine until it returns 200.
+Railway's healthcheck (configured in `railway.api.json` →
+`deploy.healthcheckPath`) hits this endpoint as part of every rolling
+deploy and won't promote the new container until it returns 200.
 
 | Check | Endpoint | What to watch for |
 |---|---|---|
 | API health | `GET /health` | 503 → database unreachable; check Neon dashboard |
-| Webhook receiving | API logs (`fly logs --config fly.api.toml`) | "─── Inbound WhatsApp ───" line should appear when sending a sandbox message |
+| Webhook receiving | `railway logs --service api` | "─── Incoming WhatsApp message ───" line should appear when sending a sandbox message |
 | Translation pipeline | Same logs | "✓ Translated" appears for each inbound non-English message |
 | Realtime fan-out | Dashboard browser console | `socket connected` on page load |
 
@@ -337,123 +314,3 @@ The current deployment is on the Twilio WhatsApp **Sandbox**. To go live:
   envelope — every downstream step is payload-shape-agnostic.
 
 Both paths leave the rest of the pipeline unchanged.
-
----
-
-## 8. Railway deployment (alternative)
-
-The repo ships with two Railway config files in `agent-support-platform/`:
-
-| File | Purpose |
-|---|---|
-| `railway.api.json` | API service — Docker build from `apps/api/Dockerfile`, healthcheck `/health` |
-| `railway.dashboard.json` | Dashboard service — Docker build from `apps/dashboard/Dockerfile`, healthcheck `/signin` |
-
-The same Dockerfiles power both Fly and Railway; the only thing that
-differs is where secrets are stored and which CLI deploys.
-
-**Live Railway URLs** (deployed in parallel to Fly so the same code base
-runs on both — both read from the same Neon DB):
-
-| Service | Railway URL | Fly URL (primary) |
-|---|---|---|
-| API | https://api-production-091a.up.railway.app | https://heilashahidi.fly.dev |
-| Dashboard | https://dashboard-production-5d4e.up.railway.app | https://asp-dashboard-heila.fly.dev |
-
-### 8.1 One-time bootstrap
-
-1. Install the Railway CLI (`npm i -g @railway/cli`) and run `railway login`.
-2. From the GitHub UI: **New Project → Deploy from GitHub repo →
-   select `bilingual-whatsapp-platform`**. Railway will offer to detect
-   services — skip that, we configure them manually.
-3. In the Railway project, create **two services** from the same repo:
-   - **API service:**
-     - Settings → Service → Source: `bilingual-whatsapp-platform`
-     - Settings → Service → Root Directory: `agent-support-platform`
-     - Settings → Service → Config-as-code path: `railway.api.json`
-   - **Dashboard service:**
-     - Same repo
-     - Root Directory: `agent-support-platform`
-     - Config-as-code path: `railway.dashboard.json`
-4. For each service, **Settings → Networking → Generate Domain** to get
-   a `*.up.railway.app` URL.
-
-### 8.2 Set environment variables
-
-Railway has no batch-import script analog to `fly secrets import`;
-paste these into **each service's Variables tab**. Values are the same
-as the Fly secrets (see §2).
-
-**API service:**
-
-| Variable | Notes |
-|---|---|
-| `DATABASE_URL` | Same Neon URL as Fly |
-| `REDIS_URL` | Same Upstash URL |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER` | Same Twilio creds |
-| `WEBHOOK_BASE_URL` | The Railway API URL (e.g. `https://api-production-091a.up.railway.app`). Leave pointing at Fly if you want Twilio webhooks to keep flowing through Fly. |
-| `USE_REAL_WHATSAPP=true`, `USE_REAL_TRANSLATION=true`, `USE_REAL_CLASSIFICATION=true` | |
-| `ANTHROPIC_API_KEY` | Same as Fly |
-| `NEXTAUTH_SECRET` | Same as Fly — must match the dashboard service |
-| `SLACK_WEBHOOK_URL`, `DASHBOARD_BASE_URL` | Same as Fly (point `DASHBOARD_BASE_URL` at the Railway dashboard URL) |
-| `PORT=3001` | Railway auto-sets `PORT`, but the API expects 3001 |
-
-**Dashboard service:**
-
-| Variable | Notes |
-|---|---|
-| `NEXT_PUBLIC_API_URL` | The Railway API URL — also set during build via Railway's automatic build-arg pass-through |
-| `NEXTAUTH_URL` | The Railway dashboard URL |
-| `NEXTAUTH_SECRET` | Same value as the API service |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Add the Railway dashboard URL as an authorized redirect URI in Google Cloud Console |
-| `PORT=3000` | |
-
-> Railway exposes service variables as both build args and runtime env
-> vars, so `NEXT_PUBLIC_API_URL` set as a variable is automatically
-> available at `next build` time — no extra configuration needed.
-
-### 8.3 Deploy
-
-Either let Railway auto-deploy on push to `main`, or trigger manually:
-
-```bash
-# Link the local repo to the Railway project (one-time)
-railway link
-
-# Deploy API
-railway up --service <api-service-name>
-
-# Deploy dashboard
-railway up --service <dashboard-service-name>
-```
-
-### 8.4 Verify
-
-```bash
-# Should return { status: 'ok', timestamp: ... }
-curl https://api-production-091a.up.railway.app/health
-
-# Dashboard sign-in flow (redirects to /signin)
-curl -IL https://dashboard-production-5d4e.up.railway.app
-
-# Tail logs
-railway logs --service api
-railway logs --service dashboard
-```
-
-### 8.5 Twilio webhook target (Fly vs Railway)
-
-By default the Twilio Sandbox can only point at one webhook URL at a
-time. Pick one:
-
-- **Primary on Fly, Railway as a hot spare for the rubric:** Keep the
-  Twilio webhook pointed at the Fly API URL. The Railway dashboard
-  still works — it reads from the same Neon database — but its API
-  won't receive any inbound WhatsApp messages. This is the recommended
-  setup for the demo.
-- **Switch to Railway:** Update the Twilio Sandbox webhook URL to the
-  Railway API URL. Inbound flow now runs through Railway. Fly stays
-  available as a fallback (same DB).
-
-Both deploys are functionally equivalent; choose based on which one you
-want to demo against.

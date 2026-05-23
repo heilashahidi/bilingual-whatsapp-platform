@@ -19,8 +19,10 @@ The codebase was built collaboratively with [Claude Code](https://claude.com/cla
   by hand because the existing `pgvector` init blocked Prisma's shadow-DB
   step on subsequent migrations).
 - Authored the CI/CD GitHub Actions workflows.
-- Wrote the deploy artifacts (Dockerfiles, fly.toml, .dockerignore) and
-  walked through the Fly.io / Neon / Upstash setup.
+- Wrote the deploy artifacts (Dockerfiles, railway.*.json, .dockerignore)
+  and walked through the Railway / Neon / Upstash setup. (The Fly.io
+  parallel deploy that existed at one point was retired in favor of
+  Railway-only — see DEPLOYMENT.md.)
 - Diagnosed every production bug encountered (Next.js cache corruption,
   Prisma P3005 / P3018, Twilio signature mismatch, NextAuth JWE vs HS256
   decoder, SLA ring negative-fill, et al.) and committed the fixes.

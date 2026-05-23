@@ -2,12 +2,12 @@
 
 A real-time support bridge connecting 1,000+ field agents across Haiti, Dominican Republic, and the Democratic Republic of Congo with a US-based operations and engineering team. Agents report issues through WhatsApp in their native language; the US team manages everything from an English-language web dashboard. Translation, classification, and routing happen transparently in between.
 
-**Live deploys** (same code, same Neon database):
+**Live deploys** on Railway:
 
-| | Fly.io (primary) | Railway (parallel) |
-|---|---|---|
-| API | <https://heilashahidi.fly.dev> | <https://api-production-091a.up.railway.app> |
-| Dashboard | <https://asp-dashboard-heila.fly.dev> | <https://dashboard-production-5d4e.up.railway.app> |
+| Service | URL |
+|---|---|
+| API | <https://api-production-091a.up.railway.app> |
+| Dashboard | <https://dashboard-production-5d4e.up.railway.app> |
 
 ## The Problem
 
@@ -111,7 +111,6 @@ agent-support-platform/
 │   └── shared/                 # Shared TS types, constants, SLA configs
 ├── docs/                       # 12 docs files covering PRD compliance
 ├── scripts/                    # Fly secrets helpers
-├── fly.api.toml + fly.dashboard.toml      # Fly.io deploy configs
 └── railway.api.json + railway.dashboard.json   # Railway deploy configs
 ```
 

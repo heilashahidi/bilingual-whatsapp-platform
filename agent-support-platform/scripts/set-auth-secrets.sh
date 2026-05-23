@@ -1,14 +1,19 @@
 #!/usr/bin/env zsh
-# Wires NextAuth + Google OAuth into local development AND Fly production.
+# Wires NextAuth + Google OAuth into LOCAL development.
 #
 # Run from agent-support-platform/. Prompts interactively for the Google
 # Client ID and Client Secret. Generates a shared NEXTAUTH_SECRET that's
 # used by both the dashboard (to sign JWTs) and the API (to verify them).
+#
+# For production (Railway), copy the generated NEXTAUTH_SECRET into the
+# Variables tab of BOTH services manually. There is no Railway CLI
+# automation in this script — we keep secret handling explicit and
+# auditable.
 
 set -e
 
-if [[ ! -f apps/api/.env || ! -f fly.api.toml || ! -f fly.dashboard.toml ]]; then
-  echo "✗ Run from the agent-support-platform/ directory" >&2
+if [[ ! -f apps/api/.env ]]; then
+  echo "✗ Run from the agent-support-platform/ directory (apps/api/.env not found)" >&2
   exit 1
 fi
 
@@ -47,26 +52,22 @@ else
 fi
 echo "✓ Updated apps/api/.env with NEXTAUTH_SECRET"
 
-# ─── Fly: API secrets ───────────────────────────────────────
-echo "→ Setting Fly secrets on the API app..."
-fly secrets set --config fly.api.toml --stage \
-  NEXTAUTH_SECRET="$NEXTAUTH_SECRET" >/dev/null
-echo "✓ API secrets staged"
-
-# ─── Fly: Dashboard secrets ─────────────────────────────────
-echo "→ Setting Fly secrets on the dashboard app..."
-fly secrets set --config fly.dashboard.toml --stage \
-  NEXTAUTH_URL="https://asp-dashboard-heila.fly.dev" \
-  NEXTAUTH_SECRET="$NEXTAUTH_SECRET" \
-  GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
-  GOOGLE_CLIENT_SECRET="$GOOGLE_CLIENT_SECRET" >/dev/null
-echo "✓ Dashboard secrets staged"
-
 echo ""
-echo "✓ All set."
+echo "✓ Local auth configured."
 echo ""
 echo "Next steps:"
 echo "  1. Restart the local API:    pkill -f 'tsx watch' || true; (cd apps/api && pnpm dev &)"
 echo "  2. Restart the local dashboard (it auto-reloads on .env changes — but force a restart to be safe)"
 echo "  3. Sign in at http://localhost:3000 (you'll be redirected to /signin)"
-echo "  4. Once local works:  fly deploy --config fly.api.toml && fly deploy --config fly.dashboard.toml"
+echo ""
+echo "For Railway (production), update these variables on BOTH services"
+echo "in the Railway dashboard Variables tab. Use the same NEXTAUTH_SECRET"
+echo "value on both — they need to match for JWT verification to work."
+echo ""
+echo "  NEXTAUTH_SECRET=$NEXTAUTH_SECRET"
+echo "  GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID"
+echo "  GOOGLE_CLIENT_SECRET=<your secret>"
+echo ""
+echo "  Dashboard service also needs:"
+echo "    NEXTAUTH_URL=https://dashboard-production-5d4e.up.railway.app"
+echo "    NEXT_PUBLIC_API_URL=https://api-production-091a.up.railway.app"

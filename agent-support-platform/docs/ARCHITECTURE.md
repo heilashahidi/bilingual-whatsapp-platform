@@ -839,9 +839,13 @@ machine A while half the dashboard clients are connected to machine B
 — and machine B never tells its clients about the new ticket. Users
 silently stop seeing realtime updates.
 
-We hit this during testing (see `fly.api.toml` comment) and resolved
-it by destroying the second machine. The fix is documented but not
-enforced; a `fly scale count 2` would re-introduce the bug.
+We hit this during testing — Fly had spawned a second machine during
+a rolling deploy and the user's browser landed on machine A while the
+Twilio webhook hit machine B, so realtime fan-out silently dropped for
+half the users. We resolved by destroying the second machine; the
+single-machine constraint is now enforced by `railway.api.json`'s
+`numReplicas: 1`. Bumping that field would re-introduce the bug until
+the Redis adapter (below) is in place.
 
 **Migration path** when scale demands it (probably north of ~5k
 concurrent dashboard sessions, or whenever we add a worker pool):
@@ -857,8 +861,8 @@ concurrent dashboard sessions, or whenever we add a worker pool):
    await Promise.all([pubClient.connect(), subClient.connect()]);
    io.adapter(createAdapter(pubClient, subClient));
    ```
-3. Update `fly.api.toml` to drop the single-machine comment and let
-   `min_machines_running` / `auto_start_machines` scale freely.
+3. Bump `numReplicas` in `railway.api.json` (currently `1`) to whatever
+   the new ceiling needs.
 4. Upstash Redis (`REDIS_URL`) is already provisioned and currently
    unused at runtime — perfect target for the adapter without
    additional infrastructure work.

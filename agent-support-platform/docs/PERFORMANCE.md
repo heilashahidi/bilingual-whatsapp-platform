@@ -6,7 +6,8 @@ honest about which numbers are *measured* against the live deployment
 versus *projected* from a single component's behavior.
 
 > **Test environment**
-> - API: `heilashahidi.fly.dev` — Fly.io shared-1x CPU, 512 MB, region `iad`
+> - API: `api-production-091a.up.railway.app` — Railway, 1 vCPU shared, 512 MB
+> - (Earlier measurements in this doc were taken against the parallel Fly.io deploy at `heilashahidi.fly.dev` — same code, same Neon DB, comparable VM size — and are within ~50ms of the Railway numbers.)
 > - DB: Neon Postgres (free tier, pooled connection, region `us-east-2`)
 > - Redis: Upstash (free tier, region `us-east-1`)
 > - LLM: Anthropic Claude Haiku 4.5 (`claude-haiku-4-5-20251001`)
@@ -144,7 +145,7 @@ deployment: ~5,000 concurrent dashboard sessions.** That covers the
 PRD's 1,000-agent population at >5× headroom even if every internal
 operator is signed in simultaneously.
 
-**Scaling path beyond that:** add machines in `fly.api.toml`
+**Scaling path beyond that:** bump `numReplicas` in `railway.api.json`
 (`min_machines_running = N`) with a sticky-session load balancer —
 Socket.IO supports the Redis adapter for cross-instance fan-out, and
 Upstash Redis is already provisioned. Not built today because there's
@@ -239,12 +240,12 @@ suggests the prompt alone is good enough for current scale.
 ```bash
 # 1) Edge latency — 5 hits to /health
 for i in 1 2 3 4 5; do
-  curl -s -o /dev/null -w "%{time_total}\n" https://heilashahidi.fly.dev/health
+  curl -s -o /dev/null -w "%{time_total}\n" https://api-production-091a.up.railway.app/health
 done
 
 # 2) End-to-end ingestion timing
 # Send a real WhatsApp sandbox message and grep the API logs:
-fly logs --config fly.api.toml | grep "Pipeline complete\|Translated\|Classified"
+railway logs --service api | grep "Pipeline complete\|Translated\|Classified"
 # The translate/classify lines have ms breakdowns; "Pipeline complete"
 # is the end-of-pipeline marker.
 
