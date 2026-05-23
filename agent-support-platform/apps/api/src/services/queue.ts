@@ -39,6 +39,15 @@ let queue: Queue<RawMessage> | null = null;
 let initialized = false;
 let initError: Error | null = null;
 
+// Connection health flag. BullMQ requires `maxRetriesPerRequest: null`
+// which makes ioredis queue commands forever while it tries to
+// reconnect — so a misconfigured REDIS_URL (e.g. pointed at
+// localhost from inside a container) would cause queue.add to HANG
+// rather than fail fast. We track health via the 'ready' / 'error'
+// events and bypass the queue entirely when the connection isn't
+// alive, so enqueueInbound always returns quickly.
+let connectionHealthy = false;
+
 function initQueueIfNeeded(): void {
   if (initialized) return;
   initialized = true;
@@ -61,10 +70,24 @@ function initQueueIfNeeded(): void {
       enableReadyCheck: true,
     });
 
+    connection.on("ready", () => {
+      connectionHealthy = true;
+      console.log("  ⚙ Redis ready for BullMQ");
+    });
+
+    connection.on("end", () => {
+      connectionHealthy = false;
+    });
+
     connection.on("error", (err) => {
-      // Logged but not fatal — the queue ops will throw individually
-      // and the enqueue helper will fall back to inline processing.
-      console.error("  ✗ Redis connection error:", err.message);
+      // Mark unhealthy so the next enqueue falls through to inline
+      // instead of hanging on queue.add. Logged at warn (not error)
+      // when we're already in a known-bad state to avoid spam.
+      const wasHealthy = connectionHealthy;
+      connectionHealthy = false;
+      if (wasHealthy) {
+        console.error("  ✗ Redis connection lost:", err.message);
+      }
     });
 
     queue = new Queue<RawMessage>(INBOUND_QUEUE_NAME, { connection });
@@ -90,10 +113,12 @@ function initQueueIfNeeded(): void {
 export async function enqueueInbound(raw: RawMessage): Promise<void> {
   initQueueIfNeeded();
 
-  // No queue available → fire-and-forget inline processing. Same
-  // semantics as the pre-queue code path. We don't await this so the
-  // webhook can respond quickly.
-  if (!queue) {
+  // No queue available OR Redis isn't connected → fire-and-forget
+  // inline processing. The connectionHealthy guard is important: with
+  // BullMQ's required `maxRetriesPerRequest: null`, queue.add would
+  // hang forever on a misconfigured Redis URL instead of failing fast.
+  // Inline path matches the pre-queue semantics exactly.
+  if (!queue || !connectionHealthy) {
     processInboundMessage(raw).catch((err) =>
       console.error("  ✗ Inline inbound processing failed:", err)
     );
@@ -133,6 +158,7 @@ export async function closeQueue(): Promise<void> {
   connection = null;
   initialized = false;
   initError = null;
+  connectionHealthy = false;
 }
 
 /**

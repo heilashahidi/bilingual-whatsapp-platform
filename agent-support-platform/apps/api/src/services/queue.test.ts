@@ -10,13 +10,19 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // vi.hoisted lifts the shared mock fns above the hoisted vi.mock calls
 // so the factories can reference them without a temporal-dead-zone
 // error.
-const { processInboundMessageMock, queueAddMock, queueCloseMock } = vi.hoisted(
-  () => ({
-    processInboundMessageMock: vi.fn().mockResolvedValue(undefined),
-    queueAddMock: vi.fn(),
-    queueCloseMock: vi.fn(),
-  })
-);
+const {
+  processInboundMessageMock,
+  queueAddMock,
+  queueCloseMock,
+  redisHandlers,
+} = vi.hoisted(() => ({
+  processInboundMessageMock: vi.fn().mockResolvedValue(undefined),
+  queueAddMock: vi.fn(),
+  queueCloseMock: vi.fn(),
+  // Map<eventName, handler> shared across the test file so each test
+  // can fire connection events deterministically.
+  redisHandlers: new Map<string, (...args: unknown[]) => void>(),
+}));
 
 // Mock the pipeline so we can assert on whether inline processing
 // happened — without actually hitting Prisma / Anthropic.
@@ -33,13 +39,24 @@ vi.mock("bullmq", () => ({
   })),
 }));
 
-// Mock ioredis to a no-op constructor — we never actually connect.
+// Mock ioredis. .on(event, handler) records the handler so the test
+// can fire 'ready' / 'error' events to drive connectionHealthy state.
 vi.mock("ioredis", () => ({
   default: vi.fn().mockImplementation(() => ({
-    on: vi.fn(),
+    on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+      redisHandlers.set(event, handler);
+    }),
     quit: vi.fn().mockResolvedValue(undefined),
   })),
 }));
+
+function fireRedisReady() {
+  redisHandlers.get("ready")?.();
+}
+
+function fireRedisError(err: Error) {
+  redisHandlers.get("error")?.(err);
+}
 
 import { enqueueInbound, closeQueue } from "./queue";
 import type { RawMessage } from "@asp/shared";
@@ -58,6 +75,7 @@ const fakeMessage: RawMessage = {
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  redisHandlers.clear();
   await closeQueue(); // reset module-level singleton between tests
 });
 
@@ -75,9 +93,17 @@ describe("enqueueInbound", () => {
     expect(queueAddMock).not.toHaveBeenCalled();
   });
 
-  it("pushes onto the BullMQ queue when REDIS_URL is set", async () => {
+  it("pushes onto the BullMQ queue when REDIS_URL is set AND connection is healthy", async () => {
     process.env.REDIS_URL = "redis://localhost:6379";
     queueAddMock.mockResolvedValue({ id: "SM_test_123" });
+
+    // First enqueue triggers init → ioredis ctor → handlers registered.
+    // We need to mark connection healthy BEFORE the queue.add check,
+    // so call enqueueInbound once to init, fire ready, then again.
+    await enqueueInbound(fakeMessage);
+    fireRedisReady();
+    queueAddMock.mockClear();
+    processInboundMessageMock.mockClear();
 
     await enqueueInbound(fakeMessage);
 
@@ -88,6 +114,9 @@ describe("enqueueInbound", () => {
   it("uses externalId as jobId for dedup against duplicate webhook delivery", async () => {
     process.env.REDIS_URL = "redis://localhost:6379";
     queueAddMock.mockResolvedValue({});
+    await enqueueInbound(fakeMessage);
+    fireRedisReady();
+    queueAddMock.mockClear();
 
     await enqueueInbound(fakeMessage);
 
@@ -98,6 +127,9 @@ describe("enqueueInbound", () => {
   it("configures retries with exponential backoff", async () => {
     process.env.REDIS_URL = "redis://localhost:6379";
     queueAddMock.mockResolvedValue({});
+    await enqueueInbound(fakeMessage);
+    fireRedisReady();
+    queueAddMock.mockClear();
 
     await enqueueInbound(fakeMessage);
 
@@ -106,9 +138,54 @@ describe("enqueueInbound", () => {
     expect(opts.backoff).toEqual({ type: "exponential", delay: 2000 });
   });
 
-  it("falls back to inline processing when queue.add throws", async () => {
+  it("falls back to inline when Redis never reaches 'ready' (e.g. wrong URL)", async () => {
+    // The real-world failure mode: REDIS_URL points at localhost from
+    // inside a Railway container, ioredis emits 'error' (ECONNREFUSED)
+    // and never emits 'ready'. With BullMQ's required
+    // maxRetriesPerRequest:null, queue.add would hang forever.
+    // Inline fallback must kick in.
     process.env.REDIS_URL = "redis://localhost:6379";
-    queueAddMock.mockRejectedValue(new Error("Redis unreachable"));
+
+    await enqueueInbound(fakeMessage);
+    // No fireRedisReady — connection stays unhealthy.
+
+    await Promise.resolve();
+    expect(processInboundMessageMock).toHaveBeenCalledWith(fakeMessage);
+    expect(queueAddMock).not.toHaveBeenCalled();
+  });
+
+  it("flips back to inline when a healthy connection later drops", async () => {
+    process.env.REDIS_URL = "redis://localhost:6379";
+    queueAddMock.mockResolvedValue({});
+
+    // Healthy → queue path
+    await enqueueInbound(fakeMessage);
+    fireRedisReady();
+    queueAddMock.mockClear();
+    processInboundMessageMock.mockClear();
+
+    await enqueueInbound(fakeMessage);
+    expect(queueAddMock).toHaveBeenCalledTimes(1);
+
+    // Connection drops
+    fireRedisError(new Error("connection lost"));
+    queueAddMock.mockClear();
+    processInboundMessageMock.mockClear();
+
+    // Next enqueue should go inline
+    await enqueueInbound(fakeMessage);
+    await Promise.resolve();
+    expect(processInboundMessageMock).toHaveBeenCalledWith(fakeMessage);
+    expect(queueAddMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to inline processing when queue.add throws on a healthy connection", async () => {
+    process.env.REDIS_URL = "redis://localhost:6379";
+    await enqueueInbound(fakeMessage);
+    fireRedisReady();
+    queueAddMock.mockClear();
+    processInboundMessageMock.mockClear();
+    queueAddMock.mockRejectedValue(new Error("Redis blip"));
 
     await enqueueInbound(fakeMessage);
 
