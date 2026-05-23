@@ -132,6 +132,32 @@ export function ConversationList({
     return () => window.removeEventListener("keydown", onKey);
   }, [filtered, activeId, searchParams, pathname, router]);
 
+  // Tiny coloured initials chip — used inline on the conversation row in
+  // place of the formerly verbose "· assignee name" line. Same hue
+  // derivation as kanban's AssigneeAvatar so the two surfaces match.
+  function AssigneeDot({ user }: { user: InternalUser }) {
+    const initials = user.name
+      .split(" ")
+      .map((s) => s[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+    const hue =
+      [...user.id].reduce((n, c) => n + c.charCodeAt(0), 0) % 360;
+    return (
+      <span
+        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[8.5px] font-semibold"
+        title={user.name}
+        style={{
+          background: `oklch(0.92 0.06 ${hue})`,
+          color: `oklch(0.30 0.10 ${hue})`,
+        }}
+      >
+        {initials}
+      </span>
+    );
+  }
+
   if (filtered.length === 0) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-center text-sm text-slate-400">
@@ -183,11 +209,11 @@ export function ConversationList({
               />
 
               <div className="min-w-0 flex-1">
-                {/* Line 1: agent name + country flag + SLA timer on right.
-                    min-w-0 on the inner flex is required for truncate to
-                    actually shrink below content width — without it, long
-                    names ("Jean-Baptiste Pierre-Louis") push the SLA timer
-                    out of the row. */}
+                {/* Line 1: agent name + flag + SLA + tiny status pill + tiny
+                    assignee avatar. Branch name and assignee name (formerly
+                    line 3) were dropped — those are detail-pane info, not
+                    triage-scan info. min-w-0 on the inner flex lets the
+                    truncate actually shrink the name when needed. */}
                 <div className="flex min-w-0 items-center gap-1.5">
                   <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-900">
                     {t.agent.name}
@@ -202,6 +228,13 @@ export function ConversationList({
                       showLabel={false}
                     />
                   </span>
+                  <span
+                    className={`shrink-0 rounded px-1 py-px text-[10px] font-medium ${STATUS_TINT[t.status]}`}
+                    title={STATUS_LABEL[t.status]}
+                  >
+                    {STATUS_LABEL[t.status]}
+                  </span>
+                  {assignee && <AssigneeDot user={assignee} />}
                 </div>
 
                 {/* Line 2: snippet (English by default, original
@@ -212,22 +245,6 @@ export function ConversationList({
                 >
                   {snippet}
                 </p>
-
-                {/* Line 3: status pill + branch + assignee */}
-                <div className="mt-1 flex items-center gap-1.5 text-[10.5px] text-slate-500">
-                  <span
-                    className={`rounded px-1.5 py-px font-medium ${STATUS_TINT[t.status]}`}
-                  >
-                    {STATUS_LABEL[t.status]}
-                  </span>
-                  <span className="truncate">{t.agent.branch.name}</span>
-                  {assignee && (
-                    <>
-                      <span aria-hidden>·</span>
-                      <span className="truncate">{assignee.name}</span>
-                    </>
-                  )}
-                </div>
               </div>
             </Link>
           </li>

@@ -49,44 +49,11 @@ const COLUMNS: {
 // Severity styles imported from lib/severity-styles so every surface
 // (kanban, list, detail, incidents) uses the same colors.
 
-const COUNTRY_META: Record<Country, { flag: string; label: string; langCode: string; langLabel: string }> = {
-  HT: { flag: "🇭🇹", label: "Haiti",              langCode: "ht", langLabel: "Kreyòl" },
-  DO: { flag: "🇩🇴", label: "Dominican Republic", langCode: "es", langLabel: "Español" },
-  CD: { flag: "🇨🇩", label: "DR Congo",           langCode: "fr", langLabel: "Français" },
+const COUNTRY_META: Record<Country, { flag: string; label: string; langLabel: string }> = {
+  HT: { flag: "🇭🇹", label: "Haiti",              langLabel: "Kreyòl" },
+  DO: { flag: "🇩🇴", label: "Dominican Republic", langLabel: "Español" },
+  CD: { flag: "🇨🇩", label: "DR Congo",           langLabel: "Français" },
 };
-
-const CONNECTIVITY_DOT: Record<string, string> = {
-  online:       "bg-emerald-500",
-  intermittent: "bg-amber-500",
-  offline:      "bg-slate-300",
-  unknown:      "bg-slate-300",
-};
-
-const CONNECTIVITY_LABEL: Record<string, string> = {
-  online:       "Online",
-  intermittent: "Intermittent",
-  offline:      "Offline",
-  unknown:      "Unknown",
-};
-
-// Small status dot beside the agent's name. When the agent is "online" we
-// add a pulsing halo (Tailwind's animate-ping) so live agents jump out on
-// a busy board. Intermittent/offline are quiet — no animation.
-function ConnectivityDot({ status }: { status: string }) {
-  const color = CONNECTIVITY_DOT[status] ?? CONNECTIVITY_DOT.unknown;
-  const isOnline = status === "online";
-  return (
-    <span
-      className="relative inline-flex h-2 w-2 shrink-0"
-      title={`Connectivity: ${CONNECTIVITY_LABEL[status] ?? "Unknown"}`}
-    >
-      {isOnline && (
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-      )}
-      <span className={`relative inline-flex h-2 w-2 rounded-full ${color}`} />
-    </span>
-  );
-}
 
 export function KanbanBoard({
   tickets: serverTickets,
@@ -403,7 +370,6 @@ function CardContent({
   const country = COUNTRY_META[ticket.agent.country];
   const assignee = userById(ticket.assignedTo);
   const isCompact = density === "compact";
-  const connDot = CONNECTIVITY_DOT[ticket.agent.connectivityStatus] ?? CONNECTIVITY_DOT.unknown;
 
   return (
     <div
@@ -422,19 +388,6 @@ function CardContent({
         <SlaTimer deadline={ticket.slaFirstResponseDeadline} />
       </div>
 
-      {/* Row 2 — ticket meta */}
-      <div className={`flex items-center gap-1.5 text-[11px] text-slate-500 ${isCompact ? "mb-1.5" : "mb-2"}`}>
-        <span className="font-mono">#{ticket.id.slice(0, 6)}</span>
-        <span className="text-slate-300">·</span>
-        <span title={`${country.label} · ${country.langLabel}`} className="inline-flex items-center gap-1">
-          <span className="text-xs leading-none">{country.flag}</span>
-          <span className="font-mono">{ticket.agent.country}</span>
-        </span>
-        <span className="inline-flex items-center rounded border border-slate-200 bg-slate-50 px-1 py-px font-mono text-[9.5px] uppercase tracking-wide text-slate-600">
-          {country.langCode}
-        </span>
-      </div>
-
       {/* Message snippet — single language at a time, controlled by
           the bilingual toggle (see snippet computation above). Compact
           mode skips the body entirely; the meta row above carries
@@ -448,10 +401,19 @@ function CardContent({
         </p>
       )}
 
-      {/* Agent row — branch name stays in compact mode (it's the location
-          context triagers rely on for incident clustering decisions). */}
+      {/* Agent row — flag + name + branch + assignee. The flag replaces
+          the prior dedicated meta row; ticket id, country code, lang
+          code, connectivity dot, and tag chips were dropped to make
+          cards scan faster. All of that data is still on the detail
+          pane. */}
       <div className={`flex items-center gap-2 ${isCompact ? "mt-0" : "mt-2.5"}`}>
-        <ConnectivityDot status={ticket.agent.connectivityStatus} />
+        <span
+          aria-hidden
+          title={`${country.label} · ${country.langLabel}`}
+          className="text-sm leading-none"
+        >
+          {country.flag}
+        </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[12.5px] font-medium text-slate-900">
             {ticket.agent.name}
@@ -462,20 +424,6 @@ function CardContent({
         </div>
         <AssigneeAvatar user={assignee} />
       </div>
-
-      {/* Tags */}
-      {!isCompact && ticket.tags.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1">
-          {ticket.tags.slice(0, 3).map((tag) => (
-            <span
-              key={tag}
-              className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] text-slate-600"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
 
       {/* Incident grouping pill — shows cluster size when the API includes it. */}
       {ticket.incident && (
