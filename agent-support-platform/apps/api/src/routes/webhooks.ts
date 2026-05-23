@@ -9,6 +9,11 @@ const router = Router();
 
 // ─── Twilio signature validation middleware ─────────────────
 // In production, always validate. Skip in dev if needed.
+//
+// Built path-aware: validates against the actual URL Twilio called
+// (req.originalUrl) so the same middleware works for both the inbound
+// /webhooks/whatsapp endpoint and the /webhooks/whatsapp/status
+// delivery-receipt endpoint.
 
 const validateTwilio = (req: Request, res: Response, next: Function) => {
   if (process.env.NODE_ENV === "development" && process.env.SKIP_TWILIO_VALIDATION === "true") {
@@ -18,13 +23,20 @@ const validateTwilio = (req: Request, res: Response, next: Function) => {
   const signature = req.headers["x-twilio-signature"] as string;
   const authToken = process.env.TWILIO_AUTH_TOKEN!;
 
-  // Build the full URL Twilio used (ngrok URL in dev)
-  const url = `${process.env.WEBHOOK_BASE_URL || `http://localhost:${process.env.PORT || 3001}`}/webhooks/whatsapp`;
+  // Reconstruct the exact URL Twilio signed. req.originalUrl includes
+  // the mount path (/webhooks/whatsapp or /webhooks/whatsapp/status)
+  // plus any querystring, so it matches what Twilio used.
+  const base =
+    process.env.WEBHOOK_BASE_URL ||
+    `http://localhost:${process.env.PORT || 3001}`;
+  const url = `${base}${req.originalUrl}`;
 
   const isValid = twilio.validateRequest(authToken, signature, url, req.body);
 
   if (!isValid) {
-    console.warn("⚠ Invalid Twilio signature — rejecting webhook");
+    console.warn(
+      `⚠ Invalid Twilio signature — rejecting webhook (${req.originalUrl})`
+    );
     return res.status(403).send("Invalid signature");
   }
 
@@ -65,7 +77,7 @@ router.post("/whatsapp", validateTwilio, async (req: Request, res: Response) => 
 // Twilio sends delivery receipts here (sent, delivered, read, failed).
 // Used for Haiti/DRC delivery tracking.
 
-router.post("/whatsapp/status", async (req: Request, res: Response) => {
+router.post("/whatsapp/status", validateTwilio, async (req: Request, res: Response) => {
   res.status(200).send("<Response></Response>");
 
   try {
