@@ -159,13 +159,13 @@ describe("GET /api/tickets — pagination validation", () => {
   it("rejects negative limit with 400", async () => {
     const res = await request(buildApp()).get("/api/tickets?limit=-5");
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/between 1 and 100/);
+    expect(res.body.error).toMatch(/between 1 and 200/);
   });
 
-  it("rejects limit above the max (100) with 400", async () => {
+  it("rejects limit above the max (200) with 400", async () => {
     const res = await request(buildApp()).get("/api/tickets?limit=500");
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/between 1 and 100/);
+    expect(res.body.error).toMatch(/between 1 and 200/);
   });
 
   it("rejects fractional limit with 400", async () => {
@@ -192,10 +192,10 @@ describe("GET /api/tickets — pagination validation", () => {
     expect(findMany.mock.calls[0][0].take).toBe(1);
   });
 
-  it("accepts limit=100 (upper bound)", async () => {
-    const res = await request(buildApp()).get("/api/tickets?limit=100");
+  it("accepts limit=200 (upper bound)", async () => {
+    const res = await request(buildApp()).get("/api/tickets?limit=200");
     expect(res.status).toBe(200);
-    expect(findMany.mock.calls[0][0].take).toBe(100);
+    expect(findMany.mock.calls[0][0].take).toBe(200);
   });
 
   it("accepts offset=0 (lower bound)", async () => {

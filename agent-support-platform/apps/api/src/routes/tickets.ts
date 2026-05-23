@@ -14,11 +14,13 @@ const router = Router();
 // ─── GET /api/tickets ───────────────────────────────────────
 // List tickets with filters, sorted by severity then SLA deadline
 
-// Pagination bounds. limit max 100 keeps a single response under ~1MB
-// for the typical ticket payload; offset is unbounded above (callers
-// are expected to use limit for paging, not to deep-paginate by offset).
+// Pagination bounds. limit max 200 keeps a single response under ~2MB
+// for the typical ticket payload, while accommodating the dashboard's
+// single-page fetch of all visible tickets. Offset is unbounded above
+// (callers are expected to use limit for paging, not to deep-paginate
+// by offset).
 const LIMIT_DEFAULT = 50;
-const LIMIT_MAX = 100;
+const LIMIT_MAX = 200;
 
 function parsePagination(
   rawLimit: unknown,
