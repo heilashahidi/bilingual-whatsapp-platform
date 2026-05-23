@@ -72,3 +72,14 @@ body[data-drawer-open] [data-drawer-hidable] { display: none; }
    edges. Otherwise the body bg color shows through the scrim above
    the shell as a "band at the top". */
 body[data-drawer-open] main { padding-top: 0; padding-bottom: 0; }
+
+/* The TicketsShell's outer `space-y-4` container still applies
+   margin-top: 1rem to the kanban/inbox/list shell because the
+   hidden data-drawer-hidable wrapper is its DOM sibling. Zero
+   that gap so the shell sits flush against the viewport top. */
+body[data-drawer-open] [data-drawer-hidable] + * { margin-top: 0; }
+
+/* Unify body bg with the shell's bg (pure white) so any leftover
+   seam between body padding/margin and the shell is invisible
+   through the blurred scrim. */
+body[data-drawer-open] { background: #fff; }
