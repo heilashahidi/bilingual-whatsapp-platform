@@ -55,7 +55,14 @@ body {
 .drawer        { animation: slide-in-right 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
 .drawer-scrim  { animation: fade-in 180ms ease-out; }
 
-/* When the ticket drawer is open, hide the site-nav header so it
-   doesn't show through the scrim as a readable bar at the top.
+/* When the ticket drawer is open, hide all the dashboard chrome that
+   would otherwise show through the scrim as readable text bars:
+     - the site-nav header (Agent Support / Tickets / Incidents …)
+     - the page-level header + filters bar (wrapped in data-drawer-hidable
+       inside tickets-shell.tsx)
+   The kanban / list / inbox shell stays visible because the user
+   wanted the dashboard "felt" behind the blurred scrim, just without
+   any literal text peeking through.
    Toggled by ticket-drawer.tsx via document.body.dataset.drawerOpen. */
-body[data-drawer-open] > header { display: none; }
+body[data-drawer-open] > header,
+body[data-drawer-open] [data-drawer-hidable] { display: none; }

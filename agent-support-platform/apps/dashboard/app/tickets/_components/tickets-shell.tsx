@@ -93,15 +93,17 @@ export function TicketsShell({
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        prefs={prefs}
-        onPrefsChange={setPrefs}
-        onNewTicket={() => setNewOpen(true)}
-        total={total}
-        closedCount={closedCount}
-      />
+      <div data-drawer-hidable className="space-y-4">
+        <PageHeader
+          prefs={prefs}
+          onPrefsChange={setPrefs}
+          onNewTicket={() => setNewOpen(true)}
+          total={total}
+          closedCount={closedCount}
+        />
 
-      <FiltersBar users={users} />
+        <FiltersBar users={users} />
+      </div>
 
       {incidentClusterInfo && (
         <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
