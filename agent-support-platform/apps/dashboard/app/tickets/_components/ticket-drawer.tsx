@@ -135,42 +135,39 @@ export function TicketDrawer() {
         className="drawer-scrim flex-1 cursor-default bg-slate-900/60 backdrop-blur-md"
       />
 
-      {/* Panel */}
+      {/* Panel — no dedicated header strip. The close + "open full"
+          controls float in the top-right corner as small icons so the
+          ticket title hugs the very top of the panel. */}
       <div
         ref={panelRef}
-        className="drawer flex w-full max-w-5xl flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl"
+        className="drawer relative flex w-full max-w-5xl flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl"
       >
-        <div className="flex shrink-0 items-center justify-between gap-3 bg-white px-5 pt-3 pb-1">
-          <div className="text-xs font-mono text-slate-500">
-            {ticketId ? `#${ticketId.slice(0, 8)}` : ""}
-          </div>
-          <div className="flex items-center gap-1">
-            {ticketId && (
-              <Link
-                href={`/tickets/${ticketId}`}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                title="Open in full page"
-              >
-                Open full
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                  <path d="M7 17L17 7M9 7h8v8" />
-                </svg>
-              </Link>
-            )}
-            <button
-              type="button"
-              onClick={close}
-              className="-mr-1 flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-              aria-label="Close"
+        <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1">
+          {ticketId && (
+            <Link
+              href={`/tickets/${ticketId}`}
+              className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              title="Open in full page"
+              aria-label="Open in full page"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M6 6l12 12M6 18L18 6" />
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M7 17L17 7M9 7h8v8" />
               </svg>
-            </button>
-          </div>
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={close}
+            className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Close"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 6l12 12M6 18L18 6" />
+            </svg>
+          </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 pt-2 pb-5">
+        <div className="flex-1 overflow-y-auto px-5 pt-4 pb-5 pr-20">
           {loading && !ticket && (
             <div className="py-8 text-center text-sm text-slate-500">Loading…</div>
           )}
