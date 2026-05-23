@@ -24,7 +24,16 @@ export function ResponseComposer({
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  // Post-send confirmation. Two shapes:
+  //   { kind: "sent" }                    → "Sent." with no translation line
+  //   { kind: "translated", text: "…" }   → "Sent. Translated as: …"
+  // The conversation language drives which one — when the outbound
+  // pipeline skipped Claude (target = en), the translated text equals
+  // what the operator typed, so we don't show the redundant box.
+  type SendPreview =
+    | { kind: "sent" }
+    | { kind: "translated"; text: string };
+  const [preview, setPreview] = useState<SendPreview | null>(null);
 
   // Mentions: maps the literal "@FullName" substring → user id. Stored as
   // a set of ids so duplicates collapse. We re-scan the text on submit to
@@ -121,8 +130,18 @@ export function ResponseComposer({
     setPreview(null);
     try {
       if (mode === "reply") {
-        const result = await sendResponse(ticketId, text.trim());
-        setPreview(result.translatedText);
+        const trimmed = text.trim();
+        const result = await sendResponse(ticketId, trimmed);
+        // Only show the "Translated as:" preview when an actual
+        // translation happened. The outbound pipeline short-circuits
+        // when the conversation language is English, in which case
+        // result.translatedText equals what the operator typed and
+        // the preview adds noise.
+        if (result.translatedText && result.translatedText !== trimmed) {
+          setPreview({ kind: "translated", text: result.translatedText });
+        } else {
+          setPreview({ kind: "sent" });
+        }
       } else {
         await createNote(ticketId, text.trim(), activeMentionIds());
       }
@@ -370,8 +389,14 @@ export function ResponseComposer({
       )}
       {preview && (
         <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
-          <div className="font-medium">Sent. Translated as:</div>
-          <div className="mt-1 text-emerald-700">{preview}</div>
+          {preview.kind === "translated" ? (
+            <>
+              <div className="font-medium">Sent. Translated as:</div>
+              <div className="mt-1 text-emerald-700">{preview.text}</div>
+            </>
+          ) : (
+            <div className="font-medium">Sent.</div>
+          )}
         </div>
       )}
     </div>
