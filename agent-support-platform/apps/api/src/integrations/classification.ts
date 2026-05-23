@@ -22,7 +22,9 @@ export async function classifyMessage(englishText: string): Promise<Classificati
 
 const CLASSIFICATION_PROMPT = `You are a support ticket classifier for a fintech platform operating in Haiti, Dominican Republic, and DRC.
 
-Classify the following agent message into structured JSON. Respond with ONLY valid JSON, no markdown.
+The agent message below may be in English, Haitian Creole, French, or Spanish — classify based on meaning regardless of source language. If the language is unfamiliar or the meaning is ambiguous, lower your confidence score accordingly (the pipeline will re-classify on a translated copy when confidence < 0.7).
+
+Classify into structured JSON. Respond with ONLY valid JSON, no markdown.
 
 Categories: bug_report, operational_complaint, feature_request, question, other
 Severity:
@@ -33,7 +35,7 @@ Severity:
 Product areas: mobile_app, payments, lottery, account, hardware, other
 likely_network: true if the issue sounds like a connectivity/internet problem rather than an app bug
 
-Output format:
+Output format (all field NAMES and tag values in English regardless of source language):
 {
   "category": "...",
   "severity": "...",

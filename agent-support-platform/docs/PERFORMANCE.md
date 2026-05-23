@@ -66,21 +66,34 @@ sleeps 1.5 s, and retries the operation. Net effect on the measured
 median above: identical for the warm case; first-after-idle requests
 take ~1.5–2 s instead of failing.
 
-**End-to-end median: ~1.6 s** for a non-English inbound message that
-requires both translation and classification (or **~0.8 s** for an
-already-English inbound that skips translation). Twilio's own ingress
-(phone → carrier → Twilio → our webhook) adds ~200–500 ms on top of
-that depending on the carrier, putting the user-perceived "I sent it,
-it's visible" time at **~1.3 s for English / ~2.0 s for non-English**.
+**End-to-end median: ~0.9 s** for a non-English inbound message
+(translate + classify run in parallel — see "Parallel translate +
+classify" below) or **~0.8 s** for an already-English inbound that
+skips translation. Twilio's own ingress (phone → carrier → Twilio →
+our webhook) adds ~200–500 ms on top of that depending on the
+carrier, putting the user-perceived "I sent it, it's visible" time at
+**~1.3 s for English / ~1.4 s for non-English**.
 
-**Optimisation paths if this ever needs to drop:**
+**Parallel translate + classify.** The two LLM calls run concurrently
+via `Promise.allSettled` against the original-language text — Haiku
+is multilingual so the classifier doesn't need the translated copy
+first. A low-confidence rescue path (re-classify on translated text
+when `confidence < 0.7`) catches the rare ambiguous cases that
+benefit from a second pass. See `services/message-pipeline.ts` steps
+3 & 4. Saves ~700 ms per non-English inbound message vs the previous
+sequential flow.
 
-- Run translation and classification in parallel (`Promise.all`) — saves
-  ~700 ms by overlapping the two LLM calls. We deliberately keep them
-  sequential today because the classifier reads the *translated* text.
-  Translating the original text and classifying the original would let
-  these parallelize, at the cost of classifier accuracy on non-English
-  inputs.
+**Queue-based ingestion.** Inbound webhooks enqueue to BullMQ
+(`services/queue.ts`) backed by Upstash Redis. A worker
+(`services/queue-worker.ts`, concurrency 4) drains the queue
+asynchronously. Twilio's webhook ack is unaffected (still ~90 ms),
+but burst recoveries from offline HT/DRC agents (8–10 queued WhatsApp
+messages dumped in seconds) now drain in ~4 s instead of ~15 s of
+serialized in-handler processing. Falls back to inline processing if
+`REDIS_URL` is unset.
+
+**Optimisation paths if this ever needs to drop further:**
+
 - Move to streaming Claude responses — first chunk arrives at ~200 ms,
   enough to render an interim "translating…" placeholder.
 - Cache translations for known phrases (greetings, sign-offs).

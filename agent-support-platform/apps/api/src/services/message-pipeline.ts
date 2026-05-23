@@ -73,53 +73,101 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
     },
   });
 
-  // ─── Step 3: Translate ──────────────────────────────────────
+  // ─── Steps 3 & 4: Translate + Classify (parallel) ──────────
+  //
+  // Previously sequential: translate → English, then classify the
+  // translated text. With Haiku that's two ~700 ms hops back-to-back.
+  // Haiku is multilingual though, so we can classify the ORIGINAL
+  // text (whatever language it's in) in parallel with translating it
+  // — halving the wall-clock time per inbound message.
+  //
+  // Tradeoff: classifier accuracy on non-English source text is
+  // slightly worse than on English. Mitigation below — if Claude
+  // returns confidence < 0.7 on the original-language pass, we
+  // re-classify on the translated English text. The re-classify only
+  // fires on ambiguous messages, so the average case keeps the
+  // parallel speedup while edge cases get the full accuracy.
+  //
+  // English-detected messages skip both translation AND parallelism
+  // and just classify the original text directly.
+
   let translatedText = raw.textBody;
   let detectedLanguage = agent.preferredLanguage;
   let translationConfidence: number | null = null;
+  let classification = null;
+
+  const CLASSIFICATION_FALLBACK = {
+    category: "other" as const,
+    severity: "medium" as const,
+    tags: [] as string[],
+    productArea: "other" as const,
+    confidence: 0,
+    likelyNetwork: false,
+  };
 
   if (raw.textBody) {
-    // Short-circuit when the message is clearly already English.
-    // Saves ~700 ms latency + one Anthropic API call per inbound
-    // English message, and avoids storing identical originalText /
-    // translatedText rows that show up as redundant "translated"
-    // markup on the dashboard.
     if (isLikelyEnglish(raw.textBody)) {
+      // Short-circuit: source is English → no translation needed,
+      // classify the original text directly.
       translatedText = raw.textBody;
       detectedLanguage = "en" as any;
       translationConfidence = 1.0;
       console.log(`  ✓ Skipped translation (en → en, heuristic)`);
-    } else {
+
       try {
-        const translation = await translateMessage(raw.textBody, "en");
-        translatedText = translation.translatedText;
-        detectedLanguage = translation.detectedLanguage as any;
-        translationConfidence = translation.confidence;
-        console.log(`  ✓ Translated (${detectedLanguage} → en): "${translatedText?.substring(0, 80)}..."`);
+        classification = await classifyMessage(raw.textBody);
+        console.log(`  ✓ Classified: ${classification.category} / ${classification.severity} [${classification.tags.join(", ")}]`);
       } catch (error) {
-        console.error("  ✗ Translation failed — using original text:", error);
-        translatedText = raw.textBody; // Fallback: show original
+        console.error("  ✗ Classification failed — defaulting to other/medium:", error);
+        classification = CLASSIFICATION_FALLBACK;
       }
-    }
-  }
+    } else {
+      // Parallel path: kick off translate + classify simultaneously
+      // against the ORIGINAL-language text.
+      const [translationResult, classifyResult] = await Promise.allSettled([
+        translateMessage(raw.textBody, "en"),
+        classifyMessage(raw.textBody),
+      ]);
 
-  // ─── Step 4: Classify ───────────────────────────────────────
-  let classification = null;
+      if (translationResult.status === "fulfilled") {
+        translatedText = translationResult.value.translatedText;
+        detectedLanguage = translationResult.value.detectedLanguage as any;
+        translationConfidence = translationResult.value.confidence;
+        console.log(`  ✓ Translated (${detectedLanguage} → en): "${translatedText?.substring(0, 80)}..."`);
+      } else {
+        console.error("  ✗ Translation failed — using original text:", translationResult.reason);
+        translatedText = raw.textBody;
+      }
 
-  if (translatedText) {
-    try {
-      classification = await classifyMessage(translatedText);
-      console.log(`  ✓ Classified: ${classification.category} / ${classification.severity} [${classification.tags.join(", ")}]`);
-    } catch (error) {
-      console.error("  ✗ Classification failed — defaulting to other/medium:", error);
-      classification = {
-        category: "other" as const,
-        severity: "medium" as const,
-        tags: [],
-        productArea: "other" as const,
-        confidence: 0,
-        likelyNetwork: false,
-      };
+      if (classifyResult.status === "fulfilled") {
+        classification = classifyResult.value;
+        console.log(`  ✓ Classified: ${classification.category} / ${classification.severity} [${classification.tags.join(", ")}] (conf ${classification.confidence})`);
+      } else {
+        console.error("  ✗ Classification failed — defaulting to other/medium:", classifyResult.reason);
+        classification = CLASSIFICATION_FALLBACK;
+      }
+
+      // Low-confidence rescue: if classification on the original-
+      // language text wasn't confident AND translation succeeded,
+      // re-classify on the translated English text. Only fires on
+      // ambiguous inputs — typical case keeps the parallel speedup.
+      if (
+        classification &&
+        classification.confidence < 0.7 &&
+        translationResult.status === "fulfilled" &&
+        translatedText !== raw.textBody
+      ) {
+        console.log(`  ↻ Low-confidence (${classification.confidence}) — re-classifying on translated text…`);
+        try {
+          const reclassified = await classifyMessage(translatedText);
+          if (reclassified.confidence > classification.confidence) {
+            classification = reclassified;
+            console.log(`  ✓ Re-classified: ${classification.category} / ${classification.severity} (conf ${classification.confidence})`);
+          }
+        } catch (error) {
+          console.error("  ✗ Re-classification failed (keeping original):", error);
+        }
+      }
     }
   }
 
