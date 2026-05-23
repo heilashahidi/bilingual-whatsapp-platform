@@ -132,7 +132,7 @@ export function TicketDrawer() {
         type="button"
         aria-label="Close ticket"
         onClick={close}
-        className="drawer-scrim flex-1 cursor-default bg-slate-900/30 backdrop-blur-sm"
+        className="drawer-scrim flex-1 cursor-default bg-slate-900/60 backdrop-blur-md"
       />
 
       {/* Panel */}
