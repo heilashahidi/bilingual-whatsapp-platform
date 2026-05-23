@@ -9,6 +9,7 @@ import type {
   TicketStatus,
 } from "@/lib/types";
 import { SEVERITY_PILL } from "@/lib/severity-styles";
+import { useUiPrefs } from "@/lib/ui-prefs";
 import { ActivityPanel } from "../activity-panel";
 import { ResponseComposer } from "../response-composer";
 import { TicketActions } from "../ticket-actions";
@@ -140,10 +141,16 @@ function NoteBubble({ note }: { note: Note }) {
 }
 
 function MessageBubble({ message }: { message: Message }) {
+  const [prefs] = useUiPrefs();
   const isInbound = message.direction === "inbound";
   const primary = isInbound ? message.translatedText : message.originalText;
   const secondary = isInbound ? message.originalText : message.translatedText;
-  const showSecondary = secondary && secondary !== primary;
+  // Only show the secondary (original-language for inbound, translated
+  // version sent to agent for outbound) when the bilingual toggle is
+  // on. Default is English-only — the bulk of the operator's flow
+  // doesn't need the foreign-language alt text rendered.
+  const showSecondary =
+    prefs.bilingual && secondary && secondary !== primary;
   const lowConfidence =
     isInbound &&
     typeof message.translationConfidence === "number" &&

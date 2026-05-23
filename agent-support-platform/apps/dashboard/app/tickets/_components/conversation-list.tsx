@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useMemo } from "react";
 import type { InternalUser, Ticket, TicketStatus } from "@/lib/types";
 import { SEVERITY_DOT } from "@/lib/severity-styles";
+import { useUiPrefs } from "@/lib/ui-prefs";
 import { readFiltersFromParams } from "./filters-bar";
 import { SlaTimer } from "./sla-timer";
 
@@ -43,6 +44,7 @@ export function ConversationList({
   const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
+  const [prefs] = useUiPrefs();
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   const activeId = searchParams.get("ticket");
 
@@ -146,6 +148,11 @@ export function ConversationList({
         const translated = latest?.translatedText || "";
         const original = latest?.originalText || "";
         const snippet = translated || original || "(no messages)";
+        // Show original-language under the translation only when the
+        // bilingual toggle is on AND the original differs from the
+        // English translation (i.e. the message wasn't already English).
+        const showOriginal =
+          prefs.bilingual && original && original !== translated;
         const assignee = t.assignedTo ? userById.get(t.assignedTo) : undefined;
 
         return (
@@ -187,10 +194,21 @@ export function ConversationList({
                   </span>
                 </div>
 
-                {/* Line 2: snippet */}
+                {/* Line 2: snippet (English translation by default) */}
                 <p className="mt-0.5 truncate text-[12px] text-slate-600">
                   {snippet}
                 </p>
+                {/* Optional line 2b: original-language snippet —
+                    only renders when the bilingual toggle is on AND
+                    the original isn't already English */}
+                {showOriginal && (
+                  <p
+                    dir="auto"
+                    className="mt-0.5 truncate text-[11px] italic text-slate-400"
+                  >
+                    {original}
+                  </p>
+                )}
 
                 {/* Line 3: status pill + branch + assignee */}
                 <div className="mt-1 flex items-center gap-1.5 text-[10.5px] text-slate-500">

@@ -28,7 +28,13 @@ export interface UiPrefs {
 
 const DEFAULTS: UiPrefs = {
   density: "comfortable",
-  bilingual: true,
+  // Default to English-only across every surface (kanban cards,
+  // conversation list snippets, ticket detail message bubbles).
+  // Operators reading triage queues don't want the foreign-language
+  // secondary line by default — they can opt into it with the
+  // bilingual toggle in the page header when they're working an
+  // ambiguous translation.
+  bilingual: false,
   view: "inbox",
   sidebarOpen: true,
 };
