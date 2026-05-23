@@ -352,6 +352,14 @@ The repo ships with two Railway config files in `agent-support-platform/`:
 The same Dockerfiles power both Fly and Railway; the only thing that
 differs is where secrets are stored and which CLI deploys.
 
+**Live Railway URLs** (deployed in parallel to Fly so the same code base
+runs on both — both read from the same Neon DB):
+
+| Service | Railway URL | Fly URL (primary) |
+|---|---|---|
+| API | https://api-production-091a.up.railway.app | https://heilashahidi.fly.dev |
+| Dashboard | https://dashboard-production-5d4e.up.railway.app | https://asp-dashboard-heila.fly.dev |
+
 ### 8.1 One-time bootstrap
 
 1. Install the Railway CLI (`npm i -g @railway/cli`) and run `railway login`.
@@ -383,7 +391,7 @@ as the Fly secrets (see §2).
 | `DATABASE_URL` | Same Neon URL as Fly |
 | `REDIS_URL` | Same Upstash URL |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER` | Same Twilio creds |
-| `WEBHOOK_BASE_URL` | The Railway API URL, e.g. `https://asp-api-production.up.railway.app` |
+| `WEBHOOK_BASE_URL` | The Railway API URL (e.g. `https://api-production-091a.up.railway.app`). Leave pointing at Fly if you want Twilio webhooks to keep flowing through Fly. |
 | `USE_REAL_WHATSAPP=true`, `USE_REAL_TRANSLATION=true`, `USE_REAL_CLASSIFICATION=true` | |
 | `ANTHROPIC_API_KEY` | Same as Fly |
 | `NEXTAUTH_SECRET` | Same as Fly — must match the dashboard service |
@@ -423,10 +431,14 @@ railway up --service <dashboard-service-name>
 
 ```bash
 # Should return { status: 'ok', timestamp: ... }
-curl https://<your-railway-api>.up.railway.app/health
+curl https://api-production-091a.up.railway.app/health
+
+# Dashboard sign-in flow (redirects to /signin)
+curl -IL https://dashboard-production-5d4e.up.railway.app
 
 # Tail logs
-railway logs --service <api-service-name>
+railway logs --service api
+railway logs --service dashboard
 ```
 
 ### 8.5 Twilio webhook target (Fly vs Railway)

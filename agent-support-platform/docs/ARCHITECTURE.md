@@ -692,6 +692,49 @@ When connectivity to a specific region fails, the system degrades gracefully:
 4. A connectivity incident is auto-created on the dashboard.
 5. When messages start flowing again (the "burst" after an outage), the system processes them using agent timestamps to reconstruct the true timeline, not the delivery-burst timestamp.
 
+### 4.5 Realtime horizontal scaling (current constraint)
+
+Section 4.1 lists Socket.IO "backed by Redis pub/sub for multi-instance"
+as the target architecture. **The Redis adapter is not yet wired up**,
+which has a concrete operational consequence: the API must stay pinned
+to a **single machine** until it is.
+
+**Why it matters:** the API hosts the Socket.IO server in-process. When
+`emitTicketEvent()` fires, it broadcasts to clients connected to *that
+specific machine*. If you run two API machines behind a load balancer
+(as Fly does during a rolling deploy), the Twilio webhook lands on
+machine A while half the dashboard clients are connected to machine B
+— and machine B never tells its clients about the new ticket. Users
+silently stop seeing realtime updates.
+
+We hit this during testing (see `fly.api.toml` comment) and resolved
+it by destroying the second machine. The fix is documented but not
+enforced; a `fly scale count 2` would re-introduce the bug.
+
+**Migration path** when scale demands it (probably north of ~5k
+concurrent dashboard sessions, or whenever we add a worker pool):
+
+1. `pnpm --filter @asp/api add @socket.io/redis-adapter ioredis`
+2. In `apps/api/src/services/realtime.ts`, replace the default
+   in-memory adapter:
+   ```ts
+   import { createAdapter } from "@socket.io/redis-adapter";
+   import { createClient } from "redis";
+   const pubClient = createClient({ url: process.env.REDIS_URL });
+   const subClient = pubClient.duplicate();
+   await Promise.all([pubClient.connect(), subClient.connect()]);
+   io.adapter(createAdapter(pubClient, subClient));
+   ```
+3. Update `fly.api.toml` to drop the single-machine comment and let
+   `min_machines_running` / `auto_start_machines` scale freely.
+4. Upstash Redis (`REDIS_URL`) is already provisioned and currently
+   unused at runtime — perfect target for the adapter without
+   additional infrastructure work.
+
+No code change is needed in any other component — `emitTicketEvent`
+keeps its current signature. The change is entirely internal to the
+realtime service.
+
 ---
 
 ## 5. Implementation Phases
