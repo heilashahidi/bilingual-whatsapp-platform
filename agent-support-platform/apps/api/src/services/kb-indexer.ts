@@ -1,12 +1,16 @@
 import { prisma } from "./database";
+import { draftKbArticle } from "./kb-drafter";
 
 // Generates a draft KnowledgeArticle from a resolved ticket. Triggered
 // from the resolve route once a resolution summary has been written.
 //
-// The current implementation derives the article fields directly from
-// the ticket — it works without any external API. When we later wire
-// in Claude Haiku to clean up the language, this function is the only
-// place to upgrade.
+// Two-stage strategy:
+//   1. Ask Claude Haiku (via kb-drafter) for a polished article.
+//   2. If Claude is unavailable or returns null, fall back to the
+//      mechanical "first inbound as problem + concatenated outbound
+//      responses as resolution" approach. KB drafts always get created
+//      regardless of LLM availability — the operator approves the draft
+//      on /knowledge before it becomes searchable.
 export async function indexResolvedTicket(ticketId: string): Promise<void> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
@@ -25,6 +29,57 @@ export async function indexResolvedTicket(ticketId: string): Promise<void> {
   // Feature requests don't belong in a knowledge base of "how to fix things"
   if (ticket.category === "feature_request") return;
 
+  // Don't double-create. If we've already indexed this ticket, skip.
+  const existing = await prisma.knowledgeArticle.findFirst({
+    where: { sourceTicketIds: { has: ticket.id } },
+  });
+  if (existing) return;
+
+  // ─── Stage 1: try Claude ────────────────────────────────────────
+  const conversation = ticket.messages
+    .map((m) => ({
+      who:
+        m.direction === "inbound"
+          ? ("agent" as const)
+          : ("operator" as const),
+      text:
+        (m.direction === "inbound" ? m.translatedText : m.originalText) ||
+        m.originalText ||
+        m.translatedText ||
+        "",
+    }))
+    .filter((m) => m.text.trim().length > 0);
+
+  const drafted = await draftKbArticle({
+    category: ticket.category,
+    productArea: ticket.productArea,
+    classifierTags: ticket.tags ?? [],
+    conversation,
+    resolutionSummary: ticket.resolutionSummary,
+  });
+
+  if (drafted) {
+    await prisma.knowledgeArticle.create({
+      data: {
+        title: drafted.title,
+        problemDescription: drafted.problemDescription,
+        resolutionText: drafted.resolutionText,
+        resolutionTextShort: drafted.resolutionTextShort,
+        category: ticket.category,
+        productArea: ticket.productArea,
+        // Union of the classifier's tags + Claude's tags, deduped.
+        tags: Array.from(new Set([...(ticket.tags ?? []), ...drafted.tags])),
+        sourceTicketIds: [ticket.id],
+        status: "draft",
+      },
+    });
+    console.log(
+      `  📚 KB: Claude-drafted "${drafted.title.slice(0, 60)}" from ticket ${ticket.id.slice(0, 8)}`
+    );
+    return;
+  }
+
+  // ─── Stage 2: mechanical fallback ───────────────────────────────
   // Use the first inbound message as the problem description (it's the
   // agent's own words about the issue, already translated into English).
   const firstInbound = ticket.messages.find((m) => m.direction === "inbound");
@@ -53,15 +108,7 @@ export async function indexResolvedTicket(ticketId: string): Promise<void> {
       ? resolutionText.slice(0, 477) + "…"
       : resolutionText;
 
-  // Auto-generated title — succinct, derived from the problem. The team
-  // can rename when reviewing the draft.
   const title = makeTitle(problemDescription);
-
-  // Don't double-create. If we've already indexed this ticket, skip.
-  const existing = await prisma.knowledgeArticle.findFirst({
-    where: { sourceTicketIds: { has: ticket.id } },
-  });
-  if (existing) return;
 
   await prisma.knowledgeArticle.create({
     data: {
@@ -78,7 +125,7 @@ export async function indexResolvedTicket(ticketId: string): Promise<void> {
   });
 
   console.log(
-    `  📚 KB: drafted article "${title.slice(0, 60)}" from ticket ${ticket.id.slice(0, 8)}`
+    `  📚 KB: mechanically drafted "${title.slice(0, 60)}" from ticket ${ticket.id.slice(0, 8)} (Claude unavailable)`
   );
 }
 

@@ -1,6 +1,7 @@
 import { prisma } from "./database";
 import { recordEvent } from "./audit";
 import { emitTicketEvent } from "./realtime";
+import { summarizeIncident } from "./incident-summarizer";
 
 // ─── Tunables ───────────────────────────────────────────────────────────
 // A window of 30 minutes with a 3-ticket threshold lights up the same kind
@@ -137,6 +138,18 @@ export async function clusterTicket(ticketId: string): Promise<string | null> {
     });
     emitTicketEvent("updated", t.id);
   }
+
+  // Ask Claude to rewrite the generic title and propose a root-cause
+  // hypothesis. Fire-and-forget so a slow Claude call never blocks the
+  // pipeline. Re-emit ticket events after the summary lands so the
+  // dashboard refetches and shows the upgraded title.
+  summarizeIncident(incident.id)
+    .then(() => {
+      for (const t of candidates) emitTicketEvent("updated", t.id);
+    })
+    .catch((err) =>
+      console.error("  ✗ incident summarizer failed:", err)
+    );
 
   return incident.id;
 }
