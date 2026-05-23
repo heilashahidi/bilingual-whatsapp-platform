@@ -232,8 +232,12 @@ router.post("/:id/messages", async (req: Request, res: Response) => {
 
 // ─── PATCH /api/tickets/:id ─────────────────────────────────
 // Update ticket metadata (status, severity, category, assignment, etc.)
+// Open to any internal user with a valid role claim. The role check is
+// defense-in-depth: tokens without a role (e.g., a misconfigured client
+// or a JWT minted outside the dashboard's sign-in flow) get a 403
+// instead of silently mutating data.
 
-router.patch("/:id", async (req: Request, res: Response) => {
+router.patch("/:id", requireRole("admin", "operations", "engineering", "support"), async (req: Request, res: Response) => {
   const { status, severity, category, assignedTo, tags, incidentId } = req.body;
 
   // Read before-state so the audit log can record what changed.

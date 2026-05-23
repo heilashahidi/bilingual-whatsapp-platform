@@ -50,9 +50,12 @@ router.get("/:id", async (req: Request, res: Response) => {
 });
 
 // ─── PATCH /api/knowledge/:id ──────────────────────────────
-// Edit a draft or active article. Anyone signed in can edit.
+// Edit a draft or active article. Restricted to admin / operations /
+// engineering — editing KB content shapes what every operator sees, so
+// it shouldn't be open to every signed-in user (approval is the
+// support lead's job; editing is content stewardship).
 
-router.patch("/:id", async (req: Request, res: Response) => {
+router.patch("/:id", requireRole("admin", "operations", "engineering"), async (req: Request, res: Response) => {
   const { title, problemDescription, resolutionText, tags, category, productArea } =
     req.body;
   const data: Record<string, unknown> = {};

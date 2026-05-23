@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { IncidentStatus, Prisma } from "@prisma/client";
 import { prisma } from "../services/database";
+import { requireRole } from "../middleware/auth";
 
 const router = Router();
 
@@ -79,9 +80,11 @@ router.get("/:id", async (req: Request, res: Response) => {
 
 // ─── PATCH /api/incidents/:id ───────────────────────────────────────
 // Update incident status / notes (operator action). Lightweight — full
-// resolution workflow can be layered on later.
+// resolution workflow can be layered on later. Restricted to admin,
+// operations, and engineering — incident management isn't a support-
+// frontline action.
 
-router.patch("/:id", async (req: Request, res: Response) => {
+router.patch("/:id", requireRole("admin", "operations", "engineering"), async (req: Request, res: Response) => {
   const { status, rootCause, resolutionNotes } = req.body;
 
   const data: Prisma.IncidentUpdateInput = {};
