@@ -111,10 +111,11 @@ export function FiltersBar({ users }: { users: InternalUser[] }) {
             <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>
           </svg>
           <input
+            id="tickets-search"
             type="text"
             value={filters.search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search agent, branch, message, tag…"
+            placeholder="Search agent, branch, message, tag…  (press / to focus)"
             className="min-w-0 flex-1 border-0 bg-transparent text-[13px] text-slate-900 outline-none placeholder:text-slate-400"
           />
         </div>

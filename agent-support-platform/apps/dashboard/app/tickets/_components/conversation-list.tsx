@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import type { InternalUser, Severity, Ticket, TicketStatus } from "@/lib/types";
 import { readFiltersFromParams } from "./filters-bar";
 import { SlaTimer } from "./sla-timer";
@@ -46,6 +46,8 @@ export function ConversationList({
   users: InternalUser[];
 }) {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
   const { data: session } = useSession();
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   const activeId = searchParams.get("ticket");
@@ -92,6 +94,47 @@ export function ConversationList({
       return true;
     });
   }, [tickets, searchParams, session]);
+
+  // j/k navigation: move the active selection up or down the filtered
+  // list without touching the mouse. Bound to the conversation list
+  // (not the document root) via a useEffect because j/k overlap with
+  // ordinary typing — the global keyboard-shortcuts handler skips
+  // form controls, but we still want j/k to do nothing when no list
+  // is showing.
+  useEffect(() => {
+    if (filtered.length === 0) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "j" && e.key !== "k") return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      const isTyping =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        (t && (t as HTMLElement).isContentEditable);
+      if (isTyping) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const currentIdx = filtered.findIndex((t) => t.id === activeId);
+      const delta = e.key === "j" ? 1 : -1;
+      // No selection yet → first j picks index 0, first k picks last.
+      const nextIdx =
+        currentIdx === -1
+          ? e.key === "j"
+            ? 0
+            : filtered.length - 1
+          : Math.max(0, Math.min(filtered.length - 1, currentIdx + delta));
+      const nextId = filtered[nextIdx]?.id;
+      if (!nextId || nextId === activeId) return;
+
+      e.preventDefault();
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("ticket", nextId);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [filtered, activeId, searchParams, pathname, router]);
 
   if (filtered.length === 0) {
     return (

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AuthSessionProvider } from "./_components/session-provider";
+import { KeyboardShortcuts } from "./_components/keyboard-shortcuts";
 import { RealtimeIndicator } from "./_components/realtime-indicator";
 import { ToastContainer } from "./_components/toast-container";
 import { UserMenu } from "./_components/user-menu";
@@ -50,6 +51,7 @@ export default function RootLayout({
               readable. */}
           <main className="px-6 py-6">{children}</main>
           <ToastContainer />
+          <KeyboardShortcuts />
         </AuthSessionProvider>
       </body>
     </html>
