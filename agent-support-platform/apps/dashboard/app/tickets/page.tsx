@@ -1,4 +1,4 @@
-import { fetchIncidents, fetchTickets, fetchUsers } from "@/lib/api";
+import { fetchTickets, fetchUsers } from "@/lib/api";
 import { getServerApiToken } from "@/lib/auth-server";
 import { RealtimeRefresh } from "@/lib/realtime-refresh";
 import { TicketsShell } from "./_components/tickets-shell";
@@ -15,14 +15,6 @@ export default async function TicketsPage() {
     error = e instanceof Error ? e.message : "Unknown error";
   }
   const users = await fetchUsers(token).catch(() => []);
-
-  // Pull all incidents server-side so we can surface the unresolved
-  // ones in a banner above the inbox. Small list, no pagination needed.
-  // Failure here is non-fatal — the page still works without the banner.
-  const allIncidents = await fetchIncidents({}, token).catch(() => []);
-  const activeIncidents = allIncidents.filter(
-    (i) => i.status === "detected" || i.status === "confirmed"
-  );
 
   if (error || !data) {
     return (
@@ -55,7 +47,6 @@ export default async function TicketsPage() {
         users={users}
         total={data.total}
         closedCount={closedCount}
-        activeIncidents={activeIncidents}
       />
     </>
   );

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import type { Incident, InternalUser, Ticket } from "@/lib/types";
+import type { InternalUser, Ticket } from "@/lib/types";
 import { useUiPrefs } from "@/lib/ui-prefs";
 import { ConversationList } from "./conversation-list";
 import { DetailPane } from "./detail-pane";
@@ -28,13 +28,11 @@ export function TicketsShell({
   users,
   total,
   closedCount,
-  activeIncidents = [],
 }: {
   tickets: Ticket[];
   users: InternalUser[];
   total: number;
   closedCount: number;
-  activeIncidents?: Incident[];
 }) {
   const [prefs, setPrefs] = useUiPrefs();
   const [newOpen, setNewOpen] = useState(false);
@@ -102,47 +100,6 @@ export function TicketsShell({
         total={total}
         closedCount={closedCount}
       />
-
-      {activeIncidents.length > 0 && (
-        <Link
-          href={
-            activeIncidents.length === 1
-              ? `/incidents/${activeIncidents[0].id}`
-              : "/incidents"
-          }
-          className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 transition hover:bg-amber-100"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            className="shrink-0 text-amber-700"
-            aria-hidden
-          >
-            <path d="M12 2L2 22h20L12 2z" />
-            <path d="M12 9v5" strokeLinecap="round" />
-            <circle cx="12" cy="18" r="1" fill="currentColor" />
-          </svg>
-          <span className="font-medium">
-            {activeIncidents.length} active incident
-            {activeIncidents.length === 1 ? "" : "s"}
-          </span>
-          <span className="text-amber-700">·</span>
-          <span>
-            {activeIncidents.reduce((n, i) => n + i.ticketCount, 0)} ticket
-            {activeIncidents.reduce((n, i) => n + i.ticketCount, 0) === 1
-              ? ""
-              : "s"}{" "}
-            affected
-          </span>
-          <span className="ml-auto text-xs">
-            {activeIncidents.length === 1 ? "Open details" : "View incidents"} →
-          </span>
-        </Link>
-      )}
 
       <FiltersBar users={users} />
 

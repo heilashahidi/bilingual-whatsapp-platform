@@ -34,7 +34,6 @@ const STATUS_DOT: Record<TicketStatus, string> = {
   closed:           "bg-slate-400",
 };
 
-const COUNTRY_FLAG: Record<string, string> = { HT: "🇭🇹", DO: "🇩🇴", CD: "🇨🇩" };
 
 export function ListView({
   tickets,
@@ -124,8 +123,7 @@ export function ListView({
               {t.severity}
             </div>
 
-            <div className="flex items-center gap-1.5 font-mono text-[11.5px] text-slate-500">
-              <span aria-hidden>{COUNTRY_FLAG[t.agent.country]}</span>
+            <div className="font-mono text-[11.5px] text-slate-500">
               {t.agent.country}
             </div>
 

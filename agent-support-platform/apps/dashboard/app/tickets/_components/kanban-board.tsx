@@ -49,10 +49,10 @@ const COLUMNS: {
 // Severity styles imported from lib/severity-styles so every surface
 // (kanban, list, detail, incidents) uses the same colors.
 
-const COUNTRY_META: Record<Country, { flag: string; label: string; langLabel: string }> = {
-  HT: { flag: "🇭🇹", label: "Haiti",              langLabel: "Kreyòl" },
-  DO: { flag: "🇩🇴", label: "Dominican Republic", langLabel: "Español" },
-  CD: { flag: "🇨🇩", label: "DR Congo",           langLabel: "Français" },
+const COUNTRY_META: Record<Country, { label: string; langLabel: string }> = {
+  HT: { label: "Haiti",              langLabel: "Kreyòl" },
+  DO: { label: "Dominican Republic", langLabel: "Español" },
+  CD: { label: "DR Congo",           langLabel: "Français" },
 };
 
 export function KanbanBoard({
@@ -401,18 +401,17 @@ function CardContent({
         </p>
       )}
 
-      {/* Agent row — flag + name + branch + assignee. The flag replaces
-          the prior dedicated meta row; ticket id, country code, lang
+      {/* Agent row — country code + name + branch + assignee. The country
+          abbrev replaces the prior dedicated meta row; ticket id, lang
           code, connectivity dot, and tag chips were dropped to make
           cards scan faster. All of that data is still on the detail
           pane. */}
       <div className={`flex items-center gap-2 ${isCompact ? "mt-0" : "mt-2.5"}`}>
         <span
-          aria-hidden
           title={`${country.label} · ${country.langLabel}`}
-          className="text-sm leading-none"
+          className="rounded bg-slate-100 px-1.5 py-px font-mono text-[10px] font-semibold tracking-wide text-slate-600"
         >
-          {country.flag}
+          {ticket.agent.country}
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[12.5px] font-medium text-slate-900">

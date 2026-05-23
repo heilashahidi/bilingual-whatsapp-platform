@@ -9,10 +9,10 @@ import { SEVERITY_DOT } from "@/lib/severity-styles";
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 const COUNTRIES: Country[] = ["HT", "DO", "CD"];
 
-const COUNTRY_LABEL: Record<Country, { flag: string; name: string }> = {
-  HT: { flag: "🇭🇹", name: "Haiti" },
-  DO: { flag: "🇩🇴", name: "Dom. Republic" },
-  CD: { flag: "🇨🇩", name: "DR Congo" },
+const COUNTRY_LABEL: Record<Country, { name: string }> = {
+  HT: { name: "Haiti" },
+  DO: { name: "Dom. Republic" },
+  CD: { name: "DR Congo" },
 };
 
 export interface ActiveFilters {
@@ -185,7 +185,6 @@ export function FiltersBar({ users }: { users: InternalUser[] }) {
             active={filters.countries.has(c)}
             onClick={() => toggleListParam("country", c)}
           >
-            <span aria-hidden>{COUNTRY_LABEL[c].flag}</span>
             {COUNTRY_LABEL[c].name}
           </ChipButton>
         ))}

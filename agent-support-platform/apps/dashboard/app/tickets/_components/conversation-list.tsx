@@ -31,7 +31,6 @@ const STATUS_TINT: Record<TicketStatus, string> = {
   closed: "text-slate-600 bg-slate-100",
 };
 
-const COUNTRY_FLAG: Record<string, string> = { HT: "🇭🇹", DO: "🇩🇴", CD: "🇨🇩" };
 
 export function ConversationList({
   tickets,
@@ -218,8 +217,8 @@ export function ConversationList({
                   <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-900">
                     {t.agent.name}
                   </span>
-                  <span aria-hidden className="shrink-0 text-xs">
-                    {COUNTRY_FLAG[t.agent.country]}
+                  <span className="shrink-0 rounded bg-slate-100 px-1 py-px font-mono text-[9.5px] font-semibold tracking-wide text-slate-600">
+                    {t.agent.country}
                   </span>
                   <span className="shrink-0">
                     <SlaTimer

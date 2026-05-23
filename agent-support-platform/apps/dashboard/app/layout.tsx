@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AuthSessionProvider } from "./_components/session-provider";
+import { IncidentsNavLink } from "./_components/incidents-nav-link";
 import { KeyboardShortcuts } from "./_components/keyboard-shortcuts";
 import { RealtimeIndicator } from "./_components/realtime-indicator";
 import { ToastContainer } from "./_components/toast-container";
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
   // Deploy marker — used as a sanity check that Railway is actually
   // rebuilding the dashboard on push. Bump if you suspect the deploy
   // is stuck on a stale image.
-  other: { "x-app-build": "2026-05-23-incident-detail" },
+  other: { "x-app-build": "2026-05-23-no-flags-nav-badge" },
 };
 
 export default function RootLayout({
@@ -35,9 +36,7 @@ export default function RootLayout({
                   <Link href="/tickets" className="hover:text-slate-900">
                     Tickets
                   </Link>
-                  <Link href="/incidents" className="hover:text-slate-900">
-                    Incidents
-                  </Link>
+                  <IncidentsNavLink />
                   <Link href="/knowledge" className="hover:text-slate-900">
                     Knowledge
                   </Link>

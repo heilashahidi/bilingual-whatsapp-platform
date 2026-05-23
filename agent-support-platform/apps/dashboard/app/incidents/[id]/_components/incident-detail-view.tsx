@@ -25,7 +25,6 @@ const STATUS_PILL: Record<IncidentStatus, string> = {
   resolved:   "bg-emerald-100 text-emerald-800 ring-emerald-200",
 };
 
-const COUNTRY_FLAG: Record<Country, string> = { HT: "🇭🇹", DO: "🇩🇴", CD: "🇨🇩" };
 const COUNTRY_LABEL: Record<Country, string> = {
   HT: "Haiti",
   DO: "Dominican Republic",
@@ -213,8 +212,8 @@ export function IncidentDetailView({ incident }: { incident: IncidentDetail }) {
             <ul className="space-y-1">
               {incident.affectedCountries.map((c) => (
                 <li key={c} className="flex items-center gap-2 text-sm">
-                  <span aria-hidden className="text-base leading-none">
-                    {COUNTRY_FLAG[c]}
+                  <span className="rounded bg-slate-100 px-1.5 py-px font-mono text-[10px] font-semibold tracking-wide text-slate-600">
+                    {c}
                   </span>
                   <span className="text-slate-800">{COUNTRY_LABEL[c]}</span>
                 </li>
@@ -311,8 +310,11 @@ export function IncidentDetailView({ incident }: { incident: IncidentDetail }) {
                     className={`h-2 w-2 shrink-0 rounded-full ${SEVERITY_DOT[t.severity]}`}
                     title={`${t.severity} severity`}
                   />
-                  <span aria-hidden className="shrink-0 text-sm leading-none">
-                    {COUNTRY_FLAG[t.agent.country]}
+                  <span
+                    className="shrink-0 rounded bg-slate-100 px-1 py-px font-mono text-[9.5px] font-semibold tracking-wide text-slate-600"
+                    title={COUNTRY_LABEL[t.agent.country]}
+                  >
+                    {t.agent.country}
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-medium text-slate-900">

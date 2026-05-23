@@ -34,7 +34,6 @@ const COUNTRY_LANG: Record<Country, string> = {
   CD: "Français",
 };
 
-const COUNTRY_FLAG: Record<Country, string> = { HT: "🇭🇹", DO: "🇩🇴", CD: "🇨🇩" };
 
 export function NewTicketModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
@@ -242,7 +241,9 @@ function AgentPicker({ value, onChange }: { value: Agent | null; onChange: (a: A
     return (
       <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="text-base leading-none">{COUNTRY_FLAG[value.country]}</span>
+          <span className="rounded bg-slate-200 px-1.5 py-px font-mono text-[10px] font-semibold tracking-wide text-slate-700">
+            {value.country}
+          </span>
           <div className="min-w-0">
             <div className="truncate text-[13px] font-medium text-slate-900">{value.name}</div>
             <div className="truncate text-[11.5px] text-slate-500">
@@ -288,14 +289,15 @@ function AgentPicker({ value, onChange }: { value: Agent | null; onChange: (a: A
               onClick={() => { onChange(a); setOpen(false); }}
               className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-slate-50"
             >
-              <span className="text-base leading-none">{COUNTRY_FLAG[a.country]}</span>
+              <span className="rounded bg-slate-100 px-1.5 py-px font-mono text-[10px] font-semibold tracking-wide text-slate-600">
+                {a.country}
+              </span>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] font-medium text-slate-900">{a.name}</div>
                 <div className="truncate text-[11.5px] text-slate-500">
                   {a.branch.name} · {a.phoneNumber}
                 </div>
               </div>
-              <span className="font-mono text-[10.5px] uppercase text-slate-400">{a.country}</span>
             </button>
           ))}
         </div>

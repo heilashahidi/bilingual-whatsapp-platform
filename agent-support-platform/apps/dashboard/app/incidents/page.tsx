@@ -13,10 +13,10 @@ const statusStyle: Record<IncidentStatus, string> = {
   resolved: "bg-emerald-100 text-emerald-800 ring-emerald-200",
 };
 
-const countryFlag: Record<Country, string> = {
-  HT: "🇭🇹",
-  DO: "🇩🇴",
-  CD: "🇨🇩",
+const COUNTRY_NAME: Record<Country, string> = {
+  HT: "Haiti",
+  DO: "Dominican Republic",
+  CD: "DR Congo",
 };
 
 function formatRelative(iso: string): string {
@@ -150,11 +150,9 @@ export default async function IncidentsPage({
 
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                     <span>
-                      {i.affectedCountries.map((c) => (
-                        <span key={c} className="mr-1" title={c}>
-                          {countryFlag[c]}
-                        </span>
-                      ))}
+                      {i.affectedCountries
+                        .map((c) => COUNTRY_NAME[c])
+                        .join(", ")}
                     </span>
                     <span>
                       {i.ticketCount} ticket{i.ticketCount === 1 ? "" : "s"}
