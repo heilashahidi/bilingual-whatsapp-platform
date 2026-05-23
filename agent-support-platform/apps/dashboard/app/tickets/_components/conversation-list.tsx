@@ -145,15 +145,24 @@ export function ConversationList({
       {filtered.map((t) => {
         const isActive = t.id === activeId;
         const latest = t.messages[0];
-        const translated = latest?.translatedText || "";
-        const original = latest?.originalText || "";
-        // Single language at a time. Default (bilingual OFF) shows the
-        // English translation; bilingual ON swaps to the field agent's
-        // original language. Falls back to whichever is present when
-        // the other field is empty.
+        // For inbound: originalText is the agent's language, translatedText
+        // is English. For outbound: originalText is the operator's English,
+        // translatedText is the foreign-language version we sent to the
+        // agent. So "English-view" and "agent-language-view" depend on
+        // message direction — picking translatedText alone (the old code)
+        // shows English for inbound but FOREIGN for outbound, which is
+        // why the kanban snippet was wrong on tickets whose latest message
+        // was an operator reply or auto-intake.
+        const isInboundLatest = latest?.direction === "inbound";
+        const englishView = isInboundLatest
+          ? latest?.translatedText || ""
+          : latest?.originalText || "";
+        const agentLangView = isInboundLatest
+          ? latest?.originalText || ""
+          : latest?.translatedText || "";
         const snippet = prefs.bilingual
-          ? original || translated || "(no messages)"
-          : translated || original || "(no messages)";
+          ? agentLangView || englishView || "(no messages)"
+          : englishView || agentLangView || "(no messages)";
         const assignee = t.assignedTo ? userById.get(t.assignedTo) : undefined;
 
         return (

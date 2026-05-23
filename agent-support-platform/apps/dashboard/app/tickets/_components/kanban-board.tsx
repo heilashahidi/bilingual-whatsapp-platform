@@ -384,14 +384,22 @@ function CardContent({
   dragging?: boolean;
 }) {
   const latest = ticket.messages[0];
-  const translated = latest?.translatedText || "";
-  const original = latest?.originalText || "";
-  // Single language at a time, like the conversation list and ticket
-  // detail. Default (bilingual OFF) shows English; bilingual ON swaps
-  // to the field-agent's original language.
+  // Direction-aware text picks. For inbound: translatedText is English,
+  // originalText is the agent's language. For outbound (operator reply
+  // or auto-intake): originalText is English, translatedText is the
+  // foreign version sent to the agent. Old code naively read
+  // translatedText, which showed FOREIGN text on tickets whose latest
+  // message was an operator reply — the bug the user kept seeing.
+  const isInboundLatest = latest?.direction === "inbound";
+  const englishView = isInboundLatest
+    ? latest?.translatedText || ""
+    : latest?.originalText || "";
+  const agentLangView = isInboundLatest
+    ? latest?.originalText || ""
+    : latest?.translatedText || "";
   const snippet = bilingual
-    ? original || translated || "(no messages)"
-    : translated || original || "(no messages)";
+    ? agentLangView || englishView || "(no messages)"
+    : englishView || agentLangView || "(no messages)";
   const country = COUNTRY_META[ticket.agent.country];
   const assignee = userById(ticket.assignedTo);
   const isCompact = density === "compact";
