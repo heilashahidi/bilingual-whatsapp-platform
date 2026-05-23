@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { fetchTicket, fetchUsers } from "@/lib/api";
@@ -134,15 +135,40 @@ export function TicketDrawer() {
         className="drawer-scrim flex-1 cursor-default bg-slate-900/60 backdrop-blur-md"
       />
 
-      {/* Panel — pure content. No header strip, no floating buttons.
-          The user closes via ESC or by clicking the scrim. Removing
-          the top-right ✕/↗ buttons lets the ticket title sit at the
-          absolute top of the panel with no horizontal chrome above it. */}
+      {/* Panel — no header strip. Close + "open full" controls float
+          in the top-right corner as small icon buttons so the ticket
+          title hugs the very top of the panel without a horizontal
+          end-to-end bar above it. */}
       <div
         ref={panelRef}
         className="drawer relative flex w-full max-w-5xl flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl"
       >
-        <div className="flex-1 overflow-y-auto px-5 pb-5">
+        <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1">
+          {ticketId && (
+            <Link
+              href={`/tickets/${ticketId}`}
+              className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              title="Open in full page"
+              aria-label="Open in full page"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M7 17L17 7M9 7h8v8" />
+              </svg>
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={close}
+            className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Close"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 6l12 12M6 18L18 6" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 pb-5 pr-20">
           {loading && !ticket && (
             <div className="py-8 text-center text-sm text-slate-500">Loading…</div>
           )}
