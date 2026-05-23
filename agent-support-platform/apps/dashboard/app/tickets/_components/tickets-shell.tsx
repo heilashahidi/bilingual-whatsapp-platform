@@ -289,11 +289,11 @@ export function TicketsShell({
 
       {newOpen && <NewTicketModal onClose={() => setNewOpen(false)} />}
 
-      {/* Slide-in drawer only mounts in kanban/list views — the inbox
-          view has its own persistent right pane handling the same URL
-          query param. Both reading the same ?ticket=<id> would double-
-          render the detail. */}
-      {!isInbox && <TicketDrawer />}
+      {/* Slide-in drawer mounts everywhere — the inbox view's right
+          column shows the empty-state placeholder, and selecting a
+          ticket opens the drawer as a full-viewport overlay with a
+          blurred scrim. Unified behavior across inbox / kanban / list. */}
+      <TicketDrawer />
     </div>
   );
 }
