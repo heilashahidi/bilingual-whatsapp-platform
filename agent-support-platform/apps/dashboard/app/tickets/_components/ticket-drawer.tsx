@@ -43,6 +43,10 @@ export function TicketDrawer() {
       setError(null);
       return;
     }
+    // Clear the previous ticket's data immediately so notes / messages
+    // / actions from the prior selection never render under the new
+    // ticket's URL while the fetch is in flight.
+    setTicket(null);
     let cancelled = false;
     setLoading(true);
     setError(null);

@@ -52,6 +52,11 @@ export function DetailPane({ users }: { users: InternalUser[] }) {
       setError(null);
       return;
     }
+    // Clear the previous ticket's data immediately so the user never
+    // sees stale notes / messages / actions from the prior selection
+    // during the fetch gap (otherwise A's notes briefly appear under
+    // B's URL before B's data arrives).
+    setTicket(null);
     const signal = { cancelled: false };
     setLoading(true);
     setError(null);
