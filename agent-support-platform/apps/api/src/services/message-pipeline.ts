@@ -7,7 +7,9 @@ import { recordEvent } from "./audit";
 import { clusterTicket } from "./incident-clusterer";
 import { translateMessage } from "../integrations/translation";
 import { classifyMessage } from "../integrations/classification";
+import { sendAgentResponse } from "../integrations/whatsapp";
 import { isLikelyEnglish } from "./language-detection";
+import { buildIntakePrompt } from "./intake-prompter";
 
 /**
  * Process an inbound message through the full pipeline:
@@ -286,6 +288,58 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
       branchName: agent.branch.name,
       messageSnippet: translatedText || raw.textBody || "",
     }).catch((err) => console.error("  ✗ notifier failed:", err));
+  }
+
+  // ─── Step 8b: Auto-intake message ──────────────────────────
+  // For new tickets in actionable categories, send a category-aware
+  // intake checklist to the agent (transaction ID, app version,
+  // terminal ID, etc.). Saves the US team a round-trip — by the
+  // time an operator opens the ticket, the agent has often replied
+  // with the info already.
+  //
+  // Fire-and-forget. The send goes through sendAgentResponse so it
+  // gets translated into the agent's language (or skipped if the
+  // conversation is in English). The resulting outbound row is
+  // persisted to the conversation timeline like any operator reply.
+  if (shouldCreateNew && classification) {
+    const intake = buildIntakePrompt({
+      category: ticket!.category,
+      severity: ticket!.severity,
+      productArea: ticket!.productArea,
+      tags: ticket!.tags,
+    });
+    if (intake) {
+      (async () => {
+        try {
+          // Target language follows the inbound — agent gets the intake
+          // in whatever language they wrote in.
+          const target = (detectedLanguage as string) || agent.preferredLanguage;
+          const { messageSid, translatedText: sentText } =
+            await sendAgentResponse(
+              agent.phoneNumber,
+              intake,
+              target,
+              agent.country
+            );
+          await prisma.message.create({
+            data: {
+              ticketId: ticket!.id,
+              direction: "outbound",
+              senderType: "system",
+              senderId: null,
+              originalText: intake,
+              originalLanguage: "en",
+              translatedText: sentText,
+              contentType: "text",
+              whatsappMessageId: messageSid,
+            },
+          });
+          console.log(`  🤖 Sent auto-intake to ${agent.phoneNumber}`);
+        } catch (err) {
+          console.error("  ✗ Auto-intake send failed:", err);
+        }
+      })();
+    }
   }
 
   // ─── Step 9: Realtime broadcast ────────────────────────────
