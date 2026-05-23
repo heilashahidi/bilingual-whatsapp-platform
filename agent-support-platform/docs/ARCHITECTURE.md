@@ -52,7 +52,7 @@ flowchart TB
     end
 
     %% ─── Compute (deployed in parallel on Fly + Railway) ─
-    subgraph Compute["Compute — Fly.io (primary) + Railway (parallel)"]
+    subgraph Compute["Compute — Railway (2 services)"]
         direction TB
 
         subgraph Dashboard["Dashboard service · Next.js 14"]
