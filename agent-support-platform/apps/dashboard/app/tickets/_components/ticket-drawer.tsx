@@ -133,7 +133,7 @@ export function TicketDrawer() {
         ref={panelRef}
         className="drawer flex w-full max-w-5xl flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl"
       >
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-2">
           <div className="text-xs font-mono text-slate-500">
             {ticketId ? `#${ticketId.slice(0, 8)}` : ""}
           </div>
@@ -163,7 +163,7 @@ export function TicketDrawer() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-5">
+        <div className="flex-1 overflow-y-auto px-5 pt-3 pb-5">
           {loading && !ticket && (
             <div className="py-8 text-center text-sm text-slate-500">Loading…</div>
           )}
