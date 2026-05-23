@@ -3,7 +3,7 @@ import twilio from "twilio";
 import { prisma } from "../services/database";
 import { emitTicketEvent } from "../services/realtime";
 import { normalizeInboundMessage } from "../services/message-normalizer";
-import { processInboundMessage } from "../services/message-pipeline";
+import { enqueueInbound } from "../services/queue";
 
 const router = Router();
 
@@ -64,12 +64,15 @@ router.post("/whatsapp", validateTwilio, async (req: Request, res: Response) => 
     // Step 1: Normalize Twilio payload → RawMessage
     const rawMessage = normalizeInboundMessage(req.body, serverReceivedAt);
 
-    // Step 2: Process through the pipeline (async)
-    // This handles: dedup → translate → classify → ticket creation → notify
-    await processInboundMessage(rawMessage);
+    // Step 2: Enqueue for async pipeline processing. enqueueInbound
+    // pushes onto the BullMQ Redis-backed queue when REDIS_URL is
+    // configured, falling back to direct inline processing otherwise
+    // (dev mode without Redis, or Redis outage). Either way, the
+    // webhook responds to Twilio immediately — see above.
+    await enqueueInbound(rawMessage);
   } catch (error) {
     // Log but don't crash — we already sent 200 to Twilio
-    console.error("✗ Error processing inbound message:", error);
+    console.error("✗ Error enqueuing inbound message:", error);
   }
 });
 

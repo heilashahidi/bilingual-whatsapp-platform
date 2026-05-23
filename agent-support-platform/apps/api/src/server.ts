@@ -10,6 +10,8 @@ import { knowledgeRouter } from "./routes/knowledge";
 import { incidentRouter } from "./routes/incidents";
 import { prisma } from "./services/database";
 import { initRealtime } from "./services/realtime";
+import { startInboundWorker, stopInboundWorker } from "./services/queue-worker";
+import { closeQueue } from "./services/queue";
 import { requireAuth } from "./middleware/auth";
 
 dotenv.config();
@@ -55,11 +57,37 @@ app.use("/api/incidents", requireAuth, incidentRouter);
 const httpServer = http.createServer(app);
 initRealtime(httpServer);
 
+// Start the BullMQ worker that drains the inbound-whatsapp queue.
+// No-op when REDIS_URL isn't set (the queue helper falls back to
+// inline processing in that case).
+startInboundWorker();
+
 httpServer.listen(PORT, () => {
   console.log(`✓ API server running on http://localhost:${PORT}`);
   console.log(`✓ Socket.IO ready on ws://localhost:${PORT}`);
   console.log(`✓ Twilio webhook URL: http://localhost:${PORT}/webhooks/whatsapp`);
   console.log(`  → Use ngrok to expose this for Twilio: ngrok http ${PORT}`);
 });
+
+// Graceful shutdown: let the worker finish in-flight jobs before the
+// process exits, otherwise those jobs sit in "active" until BullMQ's
+// stalled-job recovery picks them up ~30s later. Railway sends SIGTERM
+// on deploy; we have ~5–10s to clean up before SIGKILL.
+async function shutdown(signal: NodeJS.Signals) {
+  console.log(`\n${signal} received — shutting down…`);
+  try {
+    await stopInboundWorker();
+    await closeQueue();
+    await prisma.$disconnect();
+  } catch (err) {
+    console.error("Error during shutdown:", err);
+  } finally {
+    httpServer.close(() => process.exit(0));
+    // Hard exit if httpServer.close takes too long.
+    setTimeout(() => process.exit(0), 5_000).unref();
+  }
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 export default app;
