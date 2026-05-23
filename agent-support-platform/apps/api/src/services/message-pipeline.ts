@@ -7,6 +7,7 @@ import { recordEvent } from "./audit";
 import { clusterTicket } from "./incident-clusterer";
 import { translateMessage } from "../integrations/translation";
 import { classifyMessage } from "../integrations/classification";
+import { isLikelyEnglish } from "./language-detection";
 
 /**
  * Process an inbound message through the full pipeline:
@@ -78,15 +79,27 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
   let translationConfidence: number | null = null;
 
   if (raw.textBody) {
-    try {
-      const translation = await translateMessage(raw.textBody, "en");
-      translatedText = translation.translatedText;
-      detectedLanguage = translation.detectedLanguage as any;
-      translationConfidence = translation.confidence;
-      console.log(`  ✓ Translated (${detectedLanguage} → en): "${translatedText?.substring(0, 80)}..."`);
-    } catch (error) {
-      console.error("  ✗ Translation failed — using original text:", error);
-      translatedText = raw.textBody; // Fallback: show original
+    // Short-circuit when the message is clearly already English.
+    // Saves ~700 ms latency + one Anthropic API call per inbound
+    // English message, and avoids storing identical originalText /
+    // translatedText rows that show up as redundant "translated"
+    // markup on the dashboard.
+    if (isLikelyEnglish(raw.textBody)) {
+      translatedText = raw.textBody;
+      detectedLanguage = "en" as any;
+      translationConfidence = 1.0;
+      console.log(`  ✓ Skipped translation (en → en, heuristic)`);
+    } else {
+      try {
+        const translation = await translateMessage(raw.textBody, "en");
+        translatedText = translation.translatedText;
+        detectedLanguage = translation.detectedLanguage as any;
+        translationConfidence = translation.confidence;
+        console.log(`  ✓ Translated (${detectedLanguage} → en): "${translatedText?.substring(0, 80)}..."`);
+      } catch (error) {
+        console.error("  ✗ Translation failed — using original text:", error);
+        translatedText = raw.textBody; // Fallback: show original
+      }
     }
   }
 
