@@ -2,6 +2,7 @@ import { getClientAuthToken } from "./auth-client";
 import type {
   Agent,
   Incident,
+  IncidentDetail,
   InternalUser,
   KnowledgeArticle,
   Message,
@@ -305,6 +306,19 @@ export async function fetchIncidents(
   if (!res.ok) throw new Error(`Failed to fetch incidents: ${res.status}`);
   const data = (await res.json()) as { incidents: Incident[] };
   return data.incidents;
+}
+
+export async function fetchIncident(
+  id: string,
+  token?: string
+): Promise<IncidentDetail> {
+  const res = await fetch(`${API_URL}/api/incidents/${id}`, {
+    headers: await authHeaders(token),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Failed to fetch incident: ${res.status}`);
+  const data = (await res.json()) as { incident: IncidentDetail };
+  return data.incident;
 }
 
 export async function updateIncident(

@@ -130,9 +130,12 @@ export default async function IncidentsPage({
                     >
                       {i.severity}
                     </span>
-                    <h3 className="text-sm font-semibold text-slate-900">
+                    <Link
+                      href={`/incidents/${i.id}`}
+                      className="text-sm font-semibold text-slate-900 hover:underline"
+                    >
                       {i.title}
-                    </h3>
+                    </Link>
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${statusStyle[i.status]}`}
                     >
@@ -193,12 +196,20 @@ export default async function IncidentsPage({
                   )}
                 </div>
 
-                <Link
-                  href={`/tickets?incident=${i.id}`}
-                  className="shrink-0 self-start rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  View tickets →
-                </Link>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <Link
+                    href={`/incidents/${i.id}`}
+                    className="rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800"
+                  >
+                    Open details
+                  </Link>
+                  <Link
+                    href={`/tickets?incident=${i.id}`}
+                    className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    View tickets →
+                  </Link>
+                </div>
               </div>
             </li>
           ))}

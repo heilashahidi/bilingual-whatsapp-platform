@@ -251,7 +251,7 @@ function Column({
         isOver ? `ring-2 ${ringClass}` : ""
       }`}
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white/80 px-3 py-2.5 backdrop-blur">
+      <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 py-2.5">
         <div className="flex items-center gap-2">
           <span className={`h-2 w-2 rounded-full ${dotClass}`} />
           <h2 className="text-[13px] font-semibold tracking-tight text-slate-800">

@@ -175,3 +175,24 @@ export interface Incident {
   resolvedAt: string | null;
   ticketCount: number;
 }
+
+export interface IncidentTicketSummary {
+  id: string;
+  severity: Severity;
+  status: TicketStatus;
+  category: TicketCategory;
+  createdAt: string;
+  agent: {
+    name: string;
+    country: Country;
+    branch: { name: string; region: string };
+  };
+}
+
+// Returned by GET /api/incidents/:id — same shape as Incident plus the
+// contributing tickets (lightweight summary, not full TicketDetail).
+// Note: the single-incident endpoint doesn't include the _count.tickets
+// rollup the list endpoint does, so ticketCount is derived client-side.
+export interface IncidentDetail extends Omit<Incident, "ticketCount"> {
+  tickets: IncidentTicketSummary[];
+}
