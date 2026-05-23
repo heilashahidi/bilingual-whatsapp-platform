@@ -43,10 +43,18 @@ Everything else is DB writes against Neon and finishes in tens of ms.
 |---|---|---|
 | Twilio → API edge | ~90 ms (warm) | `curl /health` × 5, see appendix |
 | `prisma.findUnique` dedup | < 5 ms | Prisma logs |
-| Translation (Claude Haiku) | **~750 ms** | Per-call timing in `translation.ts` |
+| `isLikelyEnglish` heuristic | < 1 ms | In-process regex check |
+| Translation (Claude Haiku) | **~750 ms** (skipped when source is English) | Per-call timing in `translation.ts` |
 | Classification (Claude Haiku) | **~700 ms** | Per-call timing in `classification.ts` |
 | Ticket + Message inserts | < 20 ms total | Two indexed writes |
 | Socket.IO broadcast | < 5 ms | In-process emit |
+
+**English-message fast path.** The pipeline runs the
+`isLikelyEnglish` heuristic before calling Claude for translation
+(`services/language-detection.ts`). When it returns true,
+`translatedText = originalText` and the LLM call is skipped — saving
+~750 ms and one Anthropic API call per English inbound message.
+Non-English inbound messages still pay the full translation cost.
 
 **Neon free-tier auto-suspend.** Neon's free tier puts the compute to
 sleep after ~5 minutes of inactivity. The first DB call after suspension
@@ -59,10 +67,11 @@ median above: identical for the warm case; first-after-idle requests
 take ~1.5–2 s instead of failing.
 
 **End-to-end median: ~1.6 s** for a non-English inbound message that
-requires both translation and classification. Twilio's own ingress
+requires both translation and classification (or **~0.8 s** for an
+already-English inbound that skips translation). Twilio's own ingress
 (phone → carrier → Twilio → our webhook) adds ~200–500 ms on top of
 that depending on the carrier, putting the user-perceived "I sent it,
-it's visible" time at **~2.0 s in the median**.
+it's visible" time at **~1.3 s for English / ~2.0 s for non-English**.
 
 **Optimisation paths if this ever needs to drop:**
 
@@ -91,14 +100,26 @@ language pairs.
 | fr → en | "L'application ne fonctionne plus, je ne peux pas me connecter." | ~680 ms |
 | es → en | "La aplicación no funciona, no puedo iniciar sesión." | ~660 ms |
 | en → ht (outbound) | "We're investigating. Please restart the app." | ~740 ms |
-| en → en (skipped) | (any text) | **0 ms** — we short-circuit when target = source |
+| en → en (outbound, skipped) | (any text) | **0 ms** — outbound short-circuit when target = source |
+| en → en (inbound, skipped) | "The app is down — can't log in" | **< 1 ms** — `isLikelyEnglish` heuristic gate, no LLM call |
 
-The en→en short-circuit was added in response to a real bug: routing an
-already-English message through Claude occasionally rewrote it. The
-operator's exact wording matters when they're quoting a fintech support
-script, so the API now skips the LLM call when the resolved target
-language is `en` (see `sendAgentResponse` in
-`apps/api/src/integrations/whatsapp.ts`).
+Two short-circuit paths skip the LLM entirely:
+
+1. **Outbound** (`sendAgentResponse` in `integrations/whatsapp.ts`): the
+   operator's typed English is sent verbatim when the conversation's
+   target language is English. Added in response to a real bug —
+   routing an already-English message through Claude occasionally
+   rewrote the operator's exact wording, which matters when they're
+   quoting a fintech support script.
+2. **Inbound** (`isLikelyEnglish` in `services/language-detection.ts`):
+   a conservative regex/stopword heuristic pre-checks the message text.
+   When it's clearly English (no accented Latin letters, no foreign
+   stopwords, contains at least one English function word), the
+   pipeline sets `translatedText = originalText` with
+   `detectedLanguage="en"` and skips the LLM. False negatives are fine
+   (the message just pays the normal translation cost); false positives
+   would leave the dashboard showing untranslated text, so the
+   heuristic deliberately under-claims.
 
 **Stub fallback.** With `USE_REAL_TRANSLATION=false` (default in
 local dev) the translator returns input verbatim in < 1 ms — useful

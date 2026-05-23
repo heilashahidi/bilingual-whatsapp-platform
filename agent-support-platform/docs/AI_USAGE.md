@@ -56,10 +56,25 @@ triggered them.
   and every outbound dashboard reply (English → the agent's *detected*
   conversation language, which may differ from their registered
   preferredLanguage).
-- **Optimization:** when the resolved target language is English, the
-  outbound path skips the Claude call entirely. Operators replying in
-  English to an English-speaking agent never burn a translation
-  round-trip.
+- **Two optimizations that skip Claude entirely:**
+  1. **Outbound English-to-English:** when the resolved target language
+     is English (the conversation language detected from the last
+     inbound message is English), the outbound path skips the Claude
+     call entirely. Operators replying in English to an English-speaking
+     agent never burn a translation round-trip.
+  2. **Inbound already-English:** a conservative heuristic in
+     `apps/api/src/services/language-detection.ts` (`isLikelyEnglish`)
+     pre-checks inbound messages. If the text has no accented Latin
+     letters (è/ñ/ç/ô), no known Creole/Spanish/French stopwords, and
+     contains at least one English function word, the pipeline sets
+     `translatedText = originalText` with `detectedLanguage="en"` and
+     skips the LLM call. Heuristic is deliberately conservative — false
+     negatives (foreign text passed through to Claude) are fine; false
+     positives (foreign text mistakenly flagged English) would leave
+     the dashboard showing untranslated text.
+- **Composer "Sent. Translated as:" toast** only renders when the
+  translation actually changed the text. English-to-English replies
+  show a simple "Sent." instead.
 - **Prompt shape:** asks for strict JSON `{ translatedText,
   detectedLanguage, confidence }`. Rules: preserve product names + error
   strings literally; if source matches target, return unchanged with
@@ -144,9 +159,11 @@ triggered them.
   scoring, not embeddings. The `KnowledgeArticle.embedding` pgvector
   column exists for a future swap to embedding-based similarity but
   is currently unused.
-- **Translation language detection** is delegated to Claude inside the
-  translation call (the `detectedLanguage` field), not a separate
-  detection pass.
+- **Translation language detection** for non-English text is delegated
+  to Claude inside the translation call (the `detectedLanguage` field).
+  The only standalone detector is the conservative `isLikelyEnglish`
+  heuristic used to short-circuit the LLM call on already-English
+  inbound messages (see §2.1 above).
 
 ## Environment variables that gate AI behavior
 
