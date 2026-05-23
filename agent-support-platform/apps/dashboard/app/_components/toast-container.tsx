@@ -9,6 +9,7 @@ import type { Severity, TicketDetail } from "@/lib/types";
 interface ToastEntry {
   id: string;
   ticket: TicketDetail;
+  kind: "created" | "message";
 }
 
 const TOAST_TIMEOUT_MS = 8000;
@@ -38,11 +39,26 @@ export function ToastContainer() {
     const socket = getSocket();
 
     const handler = async (event: TicketChangedEvent) => {
-      if (event.kind !== "created") return;
+      // We toast on two kinds:
+      //   created → brand-new conversation, brand-new ticket
+      //   message → new inbound message appended to an existing ticket
+      // The third kind (updated — status/assignment change) is too noisy
+      // for a popup and is already surfaced by RealtimeRefresh +
+      // DetailPane re-fetch.
+      if (event.kind !== "created" && event.kind !== "message") return;
+
       try {
         const ticket = await fetchTicket(event.ticketId);
+        // "message" events also fire for outbound replies the operator
+        // just sent — they don't need a toast for their own message
+        // (they typed it). Filter: only toast when the most-recent
+        // message is INBOUND.
+        if (event.kind === "message") {
+          const latest = ticket.messages[ticket.messages.length - 1];
+          if (latest?.direction !== "inbound") return;
+        }
         const id = `${event.ticketId}-${Date.now()}`;
-        setToasts((prev) => [...prev, { id, ticket }]);
+        setToasts((prev) => [...prev, { id, ticket, kind: event.kind as "created" | "message" }]);
         // Auto-dismiss
         window.setTimeout(() => {
           setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -67,6 +83,7 @@ export function ToastContainer() {
         <ToastCard
           key={t.id}
           ticket={t.ticket}
+          kind={t.kind}
           onDismiss={() => dismiss(t.id)}
         />
       ))}
@@ -76,12 +93,21 @@ export function ToastContainer() {
 
 function ToastCard({
   ticket,
+  kind,
   onDismiss,
 }: {
   ticket: TicketDetail;
+  kind: "created" | "message";
   onDismiss: () => void;
 }) {
-  const latest = ticket.messages[0];
+  // For "created" the ticket has one message (the inbound that just
+  // created it). For "message" we want the most recent one, which
+  // sits at the END of the chronological messages array returned by
+  // GET /api/tickets/:id (orderBy createdAt asc).
+  const latest =
+    kind === "message"
+      ? ticket.messages[ticket.messages.length - 1]
+      : ticket.messages[0];
   const snippet = latest?.translatedText || latest?.originalText || "(no body)";
 
   return (
@@ -96,7 +122,7 @@ function ToastCard({
             {ticket.severity}
           </span>
           <span className="text-xs font-medium text-slate-700">
-            new ticket
+            {kind === "created" ? "new ticket" : "new reply"}
           </span>
         </div>
         <button
