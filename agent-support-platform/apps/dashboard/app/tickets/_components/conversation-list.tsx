@@ -147,12 +147,13 @@ export function ConversationList({
         const latest = t.messages[0];
         const translated = latest?.translatedText || "";
         const original = latest?.originalText || "";
-        const snippet = translated || original || "(no messages)";
-        // Show original-language under the translation only when the
-        // bilingual toggle is on AND the original differs from the
-        // English translation (i.e. the message wasn't already English).
-        const showOriginal =
-          prefs.bilingual && original && original !== translated;
+        // Single language at a time. Default (bilingual OFF) shows the
+        // English translation; bilingual ON swaps to the field agent's
+        // original language. Falls back to whichever is present when
+        // the other field is empty.
+        const snippet = prefs.bilingual
+          ? original || translated || "(no messages)"
+          : translated || original || "(no messages)";
         const assignee = t.assignedTo ? userById.get(t.assignedTo) : undefined;
 
         return (
@@ -194,21 +195,14 @@ export function ConversationList({
                   </span>
                 </div>
 
-                {/* Line 2: snippet (English translation by default) */}
-                <p className="mt-0.5 truncate text-[12px] text-slate-600">
+                {/* Line 2: snippet (English by default, original
+                    language when the bilingual toggle is on) */}
+                <p
+                  dir={prefs.bilingual ? "auto" : undefined}
+                  className="mt-0.5 truncate text-[12px] text-slate-600"
+                >
                   {snippet}
                 </p>
-                {/* Optional line 2b: original-language snippet —
-                    only renders when the bilingual toggle is on AND
-                    the original isn't already English */}
-                {showOriginal && (
-                  <p
-                    dir="auto"
-                    className="mt-0.5 truncate text-[11px] italic text-slate-400"
-                  >
-                    {original}
-                  </p>
-                )}
 
                 {/* Line 3: status pill + branch + assignee */}
                 <div className="mt-1 flex items-center gap-1.5 text-[10.5px] text-slate-500">

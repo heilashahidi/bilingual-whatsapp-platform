@@ -386,7 +386,12 @@ function CardContent({
   const latest = ticket.messages[0];
   const translated = latest?.translatedText || "";
   const original = latest?.originalText || "";
-  const snippet = translated || original || "(no messages)";
+  // Single language at a time, like the conversation list and ticket
+  // detail. Default (bilingual OFF) shows English; bilingual ON swaps
+  // to the field-agent's original language.
+  const snippet = bilingual
+    ? original || translated || "(no messages)"
+    : translated || original || "(no messages)";
   const country = COUNTRY_META[ticket.agent.country];
   const assignee = userById(ticket.assignedTo);
   const isCompact = density === "compact";
@@ -422,23 +427,17 @@ function CardContent({
         </span>
       </div>
 
-      {/* Message: translated (primary) + original (italic, dimmed).
-          Compact mode skips the message body entirely — agent name + SLA
-          + incident/resolution pills carry the meaning at high density. */}
+      {/* Message snippet — single language at a time, controlled by
+          the bilingual toggle (see snippet computation above). Compact
+          mode skips the body entirely; the meta row above carries
+          severity/SLA at high density. */}
       {!isCompact && (
-        <>
-          <p className="line-clamp-2 text-sm leading-snug text-slate-900">
-            {snippet}
-          </p>
-          {bilingual && original && original !== translated && (
-            <p
-              dir="auto"
-              className="mt-1 line-clamp-1 border-l-2 border-slate-200 pl-2 text-[11.5px] italic leading-snug text-slate-500"
-            >
-              {original}
-            </p>
-          )}
-        </>
+        <p
+          dir={bilingual ? "auto" : undefined}
+          className="line-clamp-2 text-sm leading-snug text-slate-900"
+        >
+          {snippet}
+        </p>
       )}
 
       {/* Agent row — branch name stays in compact mode (it's the location

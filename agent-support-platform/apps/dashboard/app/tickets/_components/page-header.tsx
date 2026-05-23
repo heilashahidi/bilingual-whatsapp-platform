@@ -106,7 +106,7 @@ export function PageHeader({
           type="button"
           onClick={() => onPrefsChange({ bilingual: !prefs.bilingual })}
           aria-pressed={prefs.bilingual}
-          title="Show the field agent's original-language message under each translation"
+          title="Show messages in the field agent's original language instead of the English translation"
           className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12.5px] font-medium transition ${
             prefs.bilingual
               ? "border-emerald-200 bg-emerald-50 text-emerald-700"

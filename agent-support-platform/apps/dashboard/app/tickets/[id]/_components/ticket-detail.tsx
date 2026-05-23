@@ -143,14 +143,25 @@ function NoteBubble({ note }: { note: Note }) {
 function MessageBubble({ message }: { message: Message }) {
   const [prefs] = useUiPrefs();
   const isInbound = message.direction === "inbound";
-  const primary = isInbound ? message.translatedText : message.originalText;
-  const secondary = isInbound ? message.originalText : message.translatedText;
-  // Only show the secondary (original-language for inbound, translated
-  // version sent to agent for outbound) when the bilingual toggle is
-  // on. Default is English-only — the bulk of the operator's flow
-  // doesn't need the foreign-language alt text rendered.
-  const showSecondary =
-    prefs.bilingual && secondary && secondary !== primary;
+  // Single language at a time. Default (bilingual OFF) shows the
+  // English version for every message — inbound translatedText,
+  // outbound operator-typed originalText. Bilingual ON swaps each
+  // bubble to the field-agent's language — inbound originalText,
+  // outbound the auto-translated version we actually sent over
+  // WhatsApp.
+  const englishView = isInbound
+    ? message.translatedText
+    : message.originalText;
+  const agentView = isInbound
+    ? message.originalText
+    : message.translatedText;
+  const primary = prefs.bilingual
+    ? agentView || englishView
+    : englishView || agentView;
+  const showSecondary = false;
+  // Keep `secondary` defined so the JSX block below stays valid; it
+  // never renders because showSecondary is now always false.
+  const secondary: string | null = null;
   const lowConfidence =
     isInbound &&
     typeof message.translationConfidence === "number" &&
