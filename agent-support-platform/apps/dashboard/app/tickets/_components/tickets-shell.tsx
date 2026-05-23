@@ -68,19 +68,61 @@ export function TicketsShell({
                            a ?ticket=… selection is in the URL */}
       {isInbox && (
         <div className="flex h-[calc(100vh-16rem)] min-h-[32rem] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          {/* InboxSidebar: hidden below lg */}
-          <div className="hidden lg:block">
+          {/* InboxSidebar: hidden below lg AND toggleable on lg+ via
+              the hamburger button below. CSS transition slides + fades
+              the width on open/close. */}
+          <div
+            className={`hidden shrink-0 overflow-hidden transition-[width,opacity] duration-200 lg:block ${
+              prefs.sidebarOpen ? "w-56 opacity-100" : "w-0 opacity-0"
+            }`}
+            aria-hidden={!prefs.sidebarOpen}
+          >
             <InboxSidebar tickets={visible} />
           </div>
 
-          {/* ConversationList: full width on mobile when no ticket
-              selected; fixed 22rem column at lg+ */}
+          {/* ConversationList column with a thin toolbar at the top
+              holding the sidebar-toggle hamburger. Full width on mobile
+              when no ticket selected; fixed 22rem column at lg+ */}
           <div
-            className={`overflow-hidden lg:w-[22rem] lg:shrink-0 lg:border-r lg:border-slate-200 ${
-              hasSelection ? "hidden lg:block" : "block w-full"
+            className={`flex flex-col overflow-hidden lg:w-[22rem] lg:shrink-0 lg:border-r lg:border-slate-200 ${
+              hasSelection ? "hidden lg:flex" : "flex w-full"
             }`}
           >
-            <ConversationList tickets={visible} users={users} />
+            <div className="hidden shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50/60 px-2 py-1.5 lg:flex">
+              <button
+                type="button"
+                onClick={() => setPrefs({ sidebarOpen: !prefs.sidebarOpen })}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-200/70 hover:text-slate-900"
+                aria-label={
+                  prefs.sidebarOpen ? "Hide inbox sidebar" : "Show inbox sidebar"
+                }
+                title={
+                  prefs.sidebarOpen
+                    ? "Hide inboxes (collapse sidebar)"
+                    : "Show inboxes (expand sidebar)"
+                }
+              >
+                {/* Three-line "hamburger" icon — universal toggle affordance */}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  aria-hidden
+                >
+                  <path d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                Conversations
+              </span>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <ConversationList tickets={visible} users={users} />
+            </div>
           </div>
 
           {/* DetailPane: hidden on mobile when no selection; full
@@ -101,8 +143,45 @@ export function TicketsShell({
           drawer still mounts so clicking a card opens the detail. */}
       {!isInbox && (
         <div className="flex h-[calc(100vh-16rem)] min-h-[32rem] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="hidden lg:block">
+          {/* Same toggleable InboxSidebar as the inbox view */}
+          <div
+            className={`hidden shrink-0 overflow-hidden transition-[width,opacity] duration-200 lg:block ${
+              prefs.sidebarOpen ? "w-56 opacity-100" : "w-0 opacity-0"
+            }`}
+            aria-hidden={!prefs.sidebarOpen}
+          >
             <InboxSidebar tickets={visible} />
+          </div>
+          {/* Hamburger toggle sits in a thin column to the left of the
+              kanban/list content so users can collapse the sidebar here
+              too without leaving their preferred view. */}
+          <div className="hidden shrink-0 items-start border-r border-slate-200 bg-slate-50/40 p-1.5 lg:flex">
+            <button
+              type="button"
+              onClick={() => setPrefs({ sidebarOpen: !prefs.sidebarOpen })}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-200/70 hover:text-slate-900"
+              aria-label={
+                prefs.sidebarOpen ? "Hide inbox sidebar" : "Show inbox sidebar"
+              }
+              title={
+                prefs.sidebarOpen
+                  ? "Hide inboxes (collapse sidebar)"
+                  : "Show inboxes (expand sidebar)"
+              }
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                aria-hidden
+              >
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto p-3">
             {prefs.view === "kanban" ? (

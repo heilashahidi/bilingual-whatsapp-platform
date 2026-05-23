@@ -20,12 +20,17 @@ export interface UiPrefs {
   density: DensityPref;
   bilingual: boolean;
   view: ViewPref;
+  // Whether the left inbox sidebar (All / My / Unassigned + by-status)
+  // is open. Toggleable via a hamburger button so operators can give
+  // the conversation list more horizontal room when needed.
+  sidebarOpen: boolean;
 }
 
 const DEFAULTS: UiPrefs = {
   density: "comfortable",
   bilingual: true,
   view: "inbox",
+  sidebarOpen: true,
 };
 
 // v2 bumps the storage key so users with old "kanban" defaults get reset
