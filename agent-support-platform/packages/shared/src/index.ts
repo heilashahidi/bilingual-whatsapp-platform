@@ -98,3 +98,38 @@ export const CLUSTERING_CONFIG: Record<string, { timeWindowHours: number; minTic
   CD: { timeWindowHours: 6, minTickets: 3 }, // Wider window for DRC
   DO: { timeWindowHours: 2, minTickets: 3 }, // Standard for DR
 };
+
+// ─── Cross-process contracts ────────────────────────────────
+// The types below are the wire/API shapes that the API process produces and
+// the dashboard process consumes. They live here so the producer and consumer
+// can't drift.
+
+// Returned by POST /api/tickets/:id/suggest-replies. Three short candidate
+// operator responses with a hint tone — operators always edit before sending.
+export interface ReplySuggestion {
+  tone: string;
+  text: string;
+}
+
+// Payload of the socket.io "ticket:changed" event emitted from the API and
+// listened for by the dashboard. Keep in sync on both sides.
+export type TicketEventKind = "created" | "updated" | "message";
+
+// Audit log action vocabulary. Producers (API mutation routes, incident
+// clusterer) write these; the dashboard activity timeline displays them.
+// Dashboard's verb map falls back gracefully for actions it doesn't render,
+// so this list can grow without a coordinated release.
+export type AuditAction =
+  | "ticket_created"
+  | "status_changed"
+  | "severity_changed"
+  | "category_changed"
+  | "assigned"
+  | "unassigned"
+  | "tagged"
+  | "message_sent"
+  | "note_added"
+  | "resolved"
+  | "deleted"
+  | "clustered"
+  | "incident_formed";

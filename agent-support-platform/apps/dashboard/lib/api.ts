@@ -1,4 +1,5 @@
 import { getClientAuthToken } from "./auth-client";
+import type { ReplySuggestion } from "@asp/shared";
 import type {
   Agent,
   Incident,
@@ -14,6 +15,8 @@ import type {
   TicketListResponse,
   TicketStatus,
 } from "./types";
+
+export type { ReplySuggestion };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -95,11 +98,6 @@ export interface TicketPatch {
   category?: TicketCategory;
   assignedTo?: string | null;
   tags?: string[];
-}
-
-export interface ReplySuggestion {
-  tone: string;
-  text: string;
 }
 
 export async function fetchReplySuggestions(

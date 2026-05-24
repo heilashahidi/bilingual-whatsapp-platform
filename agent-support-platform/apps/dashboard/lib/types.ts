@@ -1,6 +1,10 @@
 // Mirrors the shape returned by GET /api/tickets in apps/api/src/routes/tickets.ts.
 // When the API stabilizes, generate these from Prisma instead of hand-maintaining.
 
+import type { AuditAction } from "@asp/shared";
+
+export type { AuditAction };
+
 export type Severity = "critical" | "high" | "medium" | "low";
 
 export type TicketStatus =
@@ -74,19 +78,6 @@ export interface KnowledgeArticle {
   createdAt: string;
   updatedAt: string;
 }
-
-export type AuditAction =
-  | "ticket_created"
-  | "status_changed"
-  | "severity_changed"
-  | "category_changed"
-  | "assigned"
-  | "unassigned"
-  | "tagged"
-  | "message_sent"
-  | "note_added"
-  | "resolved"
-  | "deleted";
 
 export interface AuditEvent {
   id: string;
