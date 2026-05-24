@@ -49,7 +49,7 @@ rubrics more strictly than Haiku — see `_lib/judge.ts`.
 | `product_area_match` | 0/1 | Exact match on product area |
 | `connectivity_flag` | 0/1 | Network-vs-app distinction |
 | `confidence_calibration` | 0–1 | Penalizes overconfident-and-wrong |
-| `tag_overlap` | 0–1 | Jaccard similarity on tag sets |
+| `tag_recall` | 0–1 | Fraction of expected tags emitted (extras allowed — kb-search uses `hasSome`) |
 
 ### `translation/` — 20 cases (en↔ht, en↔fr, en↔es, preservation, pass-through, tone)
 | Scorer | Range | Signal | Needs key? |
@@ -124,6 +124,20 @@ non-breaking change and improves general testability).
 
 ## CI
 
-See `.github/workflows/evals.yml` (when added). Suggested gating: run on every
-PR with `BRAINTRUST_API_KEY` + `ANTHROPIC_API_KEY` secrets, fail if any score
-regresses >5% vs the main-branch baseline.
+`.github/workflows/evals.yml` runs the full eval suite on every push to
+`main` and every PR that touches the API or evals.
+
+**Setup:** add two repo secrets under Settings → Secrets and variables → Actions:
+
+- `ANTHROPIC_API_KEY` — required. Without it the job logs a warning and skips.
+- `BRAINTRUST_API_KEY` — optional. Without it, evals run in `--no-send-logs`
+  mode (scores print in logs but aren't uploaded for diff tracking). With it,
+  results upload to braintrust.dev and you can diff PR vs `main`.
+
+The workflow only runs when API source or eval files change, so docs-only
+or dashboard-only PRs don't burn LLM credits.
+
+**Regression gating (future):** Braintrust supports a `--fail-on` flag for
+score-regression gating. To enable, change `pnpm eval` to
+`pnpm exec braintrust eval --fail-on regression evals` in the workflow once
+you have a baseline experiment on `main`.

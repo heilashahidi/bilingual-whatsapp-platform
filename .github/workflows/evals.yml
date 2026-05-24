@@ -1,0 +1,78 @@
+name: Evals
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "agent-support-platform/apps/api/src/integrations/**"
+      - "agent-support-platform/apps/api/src/services/**"
+      - "agent-support-platform/apps/api/evals/**"
+      - "agent-support-platform/apps/api/package.json"
+      - "agent-support-platform/packages/shared/**"
+      - ".github/workflows/evals.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "agent-support-platform/apps/api/src/integrations/**"
+      - "agent-support-platform/apps/api/src/services/**"
+      - "agent-support-platform/apps/api/evals/**"
+      - "agent-support-platform/apps/api/package.json"
+      - "agent-support-platform/packages/shared/**"
+      - ".github/workflows/evals.yml"
+
+jobs:
+  evals:
+    name: Braintrust evals
+    runs-on: ubuntu-latest
+    # Fork PRs cannot read repo secrets; skip rather than fail noisily.
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
+    defaults:
+      run:
+        working-directory: agent-support-platform
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.0.0 --activate
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('agent-support-platform/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: cd apps/api && pnpm exec prisma generate
+
+      - name: Run evals
+        env:
+          USE_REAL_CLASSIFICATION: "true"
+          USE_REAL_TRANSLATION: "true"
+        run: |
+          cd apps/api
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::warning::ANTHROPIC_API_KEY secret not set — skipping evals. Add it under Settings → Secrets → Actions to enable."
+            exit 0
+          fi
+          if [ -z "$BRAINTRUST_API_KEY" ]; then
+            echo "::notice::BRAINTRUST_API_KEY not set — running offline (no regression diff against main). Sign up at https://braintrust.dev to enable diff tracking."
+            pnpm eval:offline
+          else
+            pnpm eval
+          fi

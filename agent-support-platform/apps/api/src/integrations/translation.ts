@@ -130,6 +130,7 @@ Rules:
 - Preserve product/branch names, error strings, and numbers literally.
 - If the source is already in ${targetName}, return it unchanged with confidence 1.0.
 - Keep tone and register (a panicked agent stays panicked).
+- Common short Haitian Creole tokens that look English but aren't: "Wi" = "Yes" (not a greeting), "Non" = "No", "Mèsi" = "Thanks".
 
 Message:
 ${text}`;

@@ -7,7 +7,7 @@ import {
   ProductAreaMatch,
   ConnectivityFlag,
   ConfidenceCalibration,
-  TagOverlap,
+  TagRecall,
 } from "./scorers";
 
 Eval("classification", {
@@ -24,6 +24,6 @@ Eval("classification", {
     ProductAreaMatch,
     ConnectivityFlag,
     ConfidenceCalibration,
-    TagOverlap,
+    TagRecall,
   ],
 });

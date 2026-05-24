@@ -204,4 +204,23 @@ export const dataset: TranslationCase[] = [
     },
     metadata: { direction: "ht→en", notes: "short ack" },
   },
+  // Regression pins for short HT tokens that look English but aren't.
+  // Pre-fix, Claude Haiku translated "Wi" as "Hi" — the prompt now lists
+  // common confusable short HT words. Keep these to catch a prompt regression.
+  {
+    input: { text: "Wi", targetLanguage: "en" },
+    expected: {
+      sourceLanguage: "ht",
+      referenceTranslation: "Yes",
+    },
+    metadata: { direction: "ht→en", notes: "single-token Wi must be Yes, not Hi" },
+  },
+  {
+    input: { text: "Non, sa pa mache.", targetLanguage: "en" },
+    expected: {
+      sourceLanguage: "ht",
+      referenceTranslation: "No, that doesn't work.",
+    },
+    metadata: { direction: "ht→en", notes: "Non = No, not the English word non" },
+  },
 ];

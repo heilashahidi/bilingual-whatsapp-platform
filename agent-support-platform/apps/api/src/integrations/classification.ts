@@ -33,6 +33,17 @@ Severity:
 Product areas: mobile_app, payments, lottery, account, hardware, other
 likely_network: true if the issue sounds like a connectivity/internet problem rather than an app bug
 
+Tags — choose ZERO OR MORE from this CONTROLLED VOCABULARY ONLY. Do not invent new tag names. If nothing fits, return an empty array:
+  - app_crash             (app crashes, force-closes, fails to launch)
+  - transaction_failure   (money transfer fails, payment rejected, balance discrepancy)
+  - lottery_results       (lottery draw results, betting outcomes)
+  - slow_payout           (commission delayed, settlement late)
+  - password_reset        (login, password, account recovery)
+  - connectivity          (network/wifi/signal-related symptoms)
+  - slow_load             (page or feature takes too long; not connectivity-attributable)
+  - ui_request            (cosmetic, dark mode, layout, accessibility)
+  - hardware              (printer, scanner, POS, device-side problems)
+
 Output format (all field NAMES and tag values in English regardless of source language):
 {
   "category": "...",

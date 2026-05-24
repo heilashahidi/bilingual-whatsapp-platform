@@ -73,18 +73,21 @@ export async function ConfidenceCalibration({ output, expected }: ScorerArgs): P
   };
 }
 
-// Jaccard similarity on tag sets. Empty-expected with empty-output counts as 1.
-export async function TagOverlap({ output, expected }: ScorerArgs): Promise<ScoreResult> {
+// Recall over the expected tag set. Extra tags emitted by the model don't
+// hurt the score — `kb-search` uses `tags: { hasSome }`, so extra relevant
+// tags only expand recall there too. Jaccard was the wrong metric here.
+// Empty-expected counts as 1 regardless of output (nothing to recall).
+export async function TagRecall({ output, expected }: ScorerArgs): Promise<ScoreResult> {
   const predicted = new Set(output.tags);
-  const target = new Set(expected.tags);
-  if (target.size === 0 && predicted.size === 0) {
-    return { name: "tag_overlap", score: 1, metadata: { predicted: [], expected: [] } };
+  const target = expected.tags;
+  if (target.length === 0) {
+    return { name: "tag_recall", score: 1, metadata: { predicted: [...predicted], expected: [], skipped: "empty expected" } };
   }
-  const intersection = [...predicted].filter((t) => target.has(t)).length;
-  const union = new Set([...predicted, ...target]).size;
+  const hit = target.filter((t) => predicted.has(t)).length;
+  const missing = target.filter((t) => !predicted.has(t));
   return {
-    name: "tag_overlap",
-    score: union === 0 ? 0 : intersection / union,
-    metadata: { predicted: [...predicted], expected: [...target], intersection, union },
+    name: "tag_recall",
+    score: hit / target.length,
+    metadata: { predicted: [...predicted], expected: target, hit, missing },
   };
 }
