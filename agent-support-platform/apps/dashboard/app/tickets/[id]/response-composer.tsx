@@ -24,26 +24,19 @@ export function ResponseComposer({
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Post-send confirmation. Two shapes:
-  //   { kind: "sent" }                    → "Sent." with no translation line
-  //   { kind: "translated", text: "…" }   → "Sent. Translated as: …"
-  // The conversation language drives which one — when the outbound
-  // pipeline skipped Claude (target = en), the translated text equals
-  // what the operator typed, so we don't show the redundant box.
-  type SendPreview =
-    | { kind: "sent" }
-    | { kind: "translated"; text: string };
-  const [preview, setPreview] = useState<SendPreview | null>(null);
+  // Post-send acknowledgment. The outbound queue path returns
+  // immediately with a pending Message; the actual translation and
+  // delivery status live on the message bubble in the timeline (which
+  // converges via the ticket:changed socket event), so we no longer
+  // need a separate "Translated as:" preview box here. A small "Sent."
+  // chip is still useful as a momentary confirmation.
+  const [showSent, setShowSent] = useState(false);
 
-  // Auto-dismiss the post-send confirmation after a few seconds so it
-  // doesn't stick around past the operator's next interaction. Cleanup
-  // cancels any pending dismissal if a new send fires first (in which
-  // case the preview state has already been reset by handleSubmit).
   useEffect(() => {
-    if (!preview) return;
-    const t = setTimeout(() => setPreview(null), 4000);
+    if (!showSent) return;
+    const t = setTimeout(() => setShowSent(false), 3000);
     return () => clearTimeout(t);
-  }, [preview]);
+  }, [showSent]);
 
   // Mentions: maps the literal "@FullName" substring → user id. Stored as
   // a set of ids so duplicates collapse. We re-scan the text on submit to
@@ -137,24 +130,14 @@ export function ResponseComposer({
     if (!text.trim() || sending) return;
     setSending(true);
     setError(null);
-    setPreview(null);
+    setShowSent(false);
     try {
       if (mode === "reply") {
-        const trimmed = text.trim();
-        const result = await sendResponse(ticketId, trimmed);
-        // Only show the "Translated as:" preview when an actual
-        // translation happened. The outbound pipeline short-circuits
-        // when the conversation language is English, in which case
-        // result.translatedText equals what the operator typed and
-        // the preview adds noise.
-        if (result.translatedText && result.translatedText !== trimmed) {
-          setPreview({ kind: "translated", text: result.translatedText });
-        } else {
-          setPreview({ kind: "sent" });
-        }
+        await sendResponse(ticketId, text.trim());
       } else {
         await createNote(ticketId, text.trim(), activeMentionIds());
       }
+      setShowSent(true);
       setText("");
       setMentions(new Map());
       router.refresh();
@@ -397,16 +380,9 @@ export function ResponseComposer({
           {error}
         </div>
       )}
-      {preview && (
+      {showSent && (
         <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
-          {preview.kind === "translated" ? (
-            <>
-              <div className="font-medium">Sent. Translated as:</div>
-              <div className="mt-1 text-emerald-700">{preview.text}</div>
-            </>
-          ) : (
-            <div className="font-medium">Sent.</div>
-          )}
+          <div className="font-medium">Queued. Delivery status updates in the conversation above.</div>
         </div>
       )}
     </div>

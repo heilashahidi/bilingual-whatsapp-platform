@@ -23,11 +23,11 @@ The translation system sits transparently between agents and the US team, allowi
 
 ### Outbound (Dashboard → Agent)
 
-1. US team member types a response in English.
-2. The system looks up the agent's `preferredLanguage`.
-3. The response is translated to the agent's language.
-4. A preview of the translation is shown to the US team member before sending (they can edit if needed).
-5. The translated message is sent via WhatsApp.
+1. US team member types a response in English and hits Send.
+2. The API persists the Message row with `deliveryStatus: 'pending'` (English text pre-filled so the timeline has something to render) and returns immediately (~50 ms). The composer shows a "Queued — status in conversation" chip and the message bubble appears with a pulsing "sending" indicator.
+3. The outbound BullMQ worker picks up the job, looks up the conversation's target language (tracks the last inbound language, falling back to `Agent.preferredLanguage`), and runs `translateResponse`.
+4. The worker enforces per-country length caps (HT/DR 1,000 / 2,000 chars), then calls Twilio with a 10 s timeout. 3 retries with exponential backoff on transient failure.
+5. On success, the row is patched to `deliveryStatus: 'sent'` with the Twilio SID and the final translated text. On terminal failure, `deliveryStatus: 'failed'` with the truncated reason in `deliveryError` — the dashboard surfaces a red "✗ failed" chip.
 
 ### Voice Notes
 
@@ -52,14 +52,26 @@ The original plan was Google Cloud Translation v3 Advanced (best commercial Hait
 
 That's it — no service account, no project ID, no glossary upload step.
 
+### In-memory translation cache (shipped in 0.4.0)
+
+Every call to `translateMessage` / `translateResponse` first checks an in-process LRU cache (`translation.ts`, `translateCached`):
+
+- **Size:** 1000 entries max, evict-oldest on overflow.
+- **TTL:** 24 hours per entry.
+- **Key:** `${targetLanguage}::${text}` — source language is auto-detected by Claude, so the result is keyed by target.
+- **Eligibility:** only cached when `confidence >= 0.7`. Stub fallbacks and low-confidence outputs are recomputed on the next hit instead of poisoning the cache.
+
+Why it matters: canned outbound replies (auto-intake checklists, "Your ticket has been resolved", operator templates) hit repeatedly. Each hit collapses a ~300–500 ms Claude Haiku call into a Map lookup (~0 ms), which directly reduces the worker's time-on-job and therefore the field agent's perceived round-trip. Per-process and per-machine — it survives a restart of nothing, so a deploy clears it. That's acceptable: the warm-up cost is ~1 cache miss per common phrase.
+
 ### Short-circuit paths (skip the LLM entirely)
 
-1. **Outbound English-to-English:** when the conversation's target language is English, the operator's typed message is sent verbatim. Avoids a Claude rewrite of an already-English support script.
-2. **Inbound likely-English:** the conservative `isLikelyEnglish` heuristic (`apps/api/src/services/language-detection.ts`) pre-checks inbound text. If it has no accented Latin letters, no Creole / Spanish / French stopwords, and at least one English function word, `translatedText = originalText` and the LLM call is skipped.
+1. **Cache hit** (above) — fastest path; full skip of the Claude call.
+2. **Outbound English-to-English:** when the conversation's target language is English, the operator's typed message is sent verbatim. Avoids a Claude rewrite of an already-English support script.
+3. **Inbound likely-English:** the conservative `isLikelyEnglish` heuristic (`apps/api/src/services/language-detection.ts`) pre-checks inbound text. If it has no accented Latin letters, no Creole / Spanish / French stopwords, and at least one English function word, `translatedText = originalText` and the LLM call is skipped.
 
 ### Development Stub
 
-When `USE_REAL_TRANSLATION=false` (default in local dev) the system uses `translateStub`, which returns the input text unchanged in <1 ms. The dashboard composer's "Sent. Translated as:" toast only renders when the translation actually changed the text, so the stub flow shows a simple "Sent." This lets you develop and test the full pipeline with zero AI API calls.
+When `USE_REAL_TRANSLATION=false` (default in local dev) the system uses `translateStub`, which returns the input text unchanged in <1 ms. Stub outputs carry confidence `0.85`, so they're cached normally — repeated dev runs still exercise the cache hit path. The composer no longer renders a "Translated as:" preview (the translation isn't known at send time under the async outbound queue); it shows a short "Queued — status in conversation" chip instead, and the delivery state surfaces on the message bubble itself.
 
 ### Swap path
 

@@ -67,21 +67,28 @@ flowchart TB
             REST["REST · /api/tickets · /agents<br/>/incidents · /knowledge<br/>(Bearer JWT, role guards on PATCH)"]
             SockS["Socket.IO server<br/>emitTicketEvent → ticket:changed"]
 
-            subgraph Pipeline["Inbound message pipeline"]
+            subgraph Pipeline["Inbound message pipeline (reordered in 0.4.0)"]
                 direction TB
                 P1["1. Dedup by whatsappMessageId"]
                 P2["2. Find / auto-register agent"]
-                P3["3. Translate → English"]
-                P4["4. Classify (category · severity · tags)"]
-                P5["5. Find or create ticket"]
-                P6["6. Persist message + SLA"]
-                P7["7. KB suggestion search<br/>(category + tag scoring)"]
-                P8["8. Slack notify (critical/high)"]
-                P9["9. Realtime broadcast"]
-                P10["10. Incident cluster check<br/>(country + category + 30-min window)"]
+                P3["3. Find or create ticket<br/>(placeholder category if new)"]
+                P4["4. Persist raw message"]
+                P5["5. EARLY emit ticket:changed<br/>(dashboard renders here, ~50–100 ms)"]
+                P6["6. Translate + Classify in parallel<br/>(Promise.allSettled)"]
+                P7["7. Patch message + reconcile<br/>category/severity"]
+                P8["8. KB search + Slack notify<br/>+ auto-intake enqueue"]
+                P9["9. Second emit ticket:changed<br/>(enriched data)"]
+                P10["10. Incident cluster check"]
             end
 
-            Outbound["Outbound · sendAgentResponse<br/>(target = last inbound's detected lang,<br/>skip translation if target = EN)"]
+            subgraph OutboundQueue["Outbound queue (BullMQ · 0.4.0)"]
+                direction TB
+                OQ1["enqueueOutbound (3 retries,<br/>exponential backoff)"]
+                OW["outbound-worker<br/>(concurrency 4)"]
+                OP["outbound-pipeline:<br/>translate (cached) → Twilio (10s timeout)<br/>→ patch deliveryStatus"]
+            end
+
+            Outbound["POST /api/tickets/:id/messages<br/>creates pending Message row,<br/>enqueues (returns ~50 ms)"]
 
             subgraph AI["AI surfaces (Claude Haiku 4.5)"]
                 direction LR
@@ -111,18 +118,20 @@ flowchart TB
     WA -- "sends" --> TW
     TW -- "POST webhook" --> WH
     WH --> P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> P8 --> P9 --> P10
-    P3 -. "Claude" .-> AI1
-    P4 -. "Claude" .-> AI2
+    P5 --> SockS
+    P9 --> SockS
+    P6 -. "Claude (cached)" .-> AI1
+    P6 -. "Claude" .-> AI2
     AI1 --> CLAUDE
     AI2 --> CLAUDE
-    P5 --> NEON
-    P6 --> NEON
+    P3 --> NEON
+    P4 --> NEON
     P7 --> NEON
-    P9 --> SockS
     P10 --> NEON
     P10 -. "Claude" .-> AI4
     AI4 --> CLAUDE
     P8 --> SLACK
+    P8 -. "enqueue auto-intake" .-> OQ1
 
     %% ─── Browser side ─────────────────────────────────
     Browser -- "page load" --> Tickets
@@ -135,8 +144,15 @@ flowchart TB
     %% ─── Outbound (US → field agent) ──────────────────
     Tickets -- "POST /messages" --> REST
     REST --> Outbound
-    Outbound -. "Claude (if target ≠ EN)" .-> AI1
-    Outbound -- "Twilio API" --> TW
+    Outbound -- "persist pending + enqueue" --> OQ1
+    Outbound --> NEON
+    OQ1 --> UPSTASH
+    OQ1 --> OW
+    OW --> OP
+    OP -. "Claude (cached)" .-> AI1
+    OP -- "Twilio API (10s timeout)" --> TW
+    OP -- "patch deliveryStatus" --> NEON
+    OP -. "emit ticket:changed" .-> SockS
     TW -- "deliver" --> WA
 
     %% ─── AI surfaces driven by operator actions ───────
@@ -182,30 +198,38 @@ flowchart TB
 
 ### 2.2 Message Lifecycle (Agent → System)
 
+The 0.4.0 reorder moved ticket creation and the first realtime emit *before* the LLM work. The cost is a brief window (~500 ms) where new tickets render as `other` / `medium`; the win is dashboard-visible latency dropping from ~500 ms to ~50–100 ms after the webhook fires — what matters for a field agent on a slow link waiting for a human reply.
+
 1. Agent sends a WhatsApp message (text, voice note, image, or video).
 2. WhatsApp Business API webhook delivers the event to the **Ingress Adapter**.
 3. Adapter normalizes the payload into an internal `RawMessage` envelope.
 4. **Self-Service Bot** evaluates the message:
-   - If it matches a known issue in the knowledge base with a high-confidence solution, the bot responds to the agent directly in their language with the fix and asks "Did that help?"
-   - If the agent confirms resolution → log the interaction (no ticket created, counted as bot-resolved).
-   - If the agent says no, or the bot has no confident match → message continues into the pipeline.
-5. **Translation Worker** detects language (Haitian Creole, French, Spanish), translates to English, and attaches both the original and translation.
-6. **Classification Worker** reads the English text and assigns category, severity, tags, and product area.
-7. **Knowledge Base Retrieval** searches resolved tickets for similar issues and attaches the top matches as `suggested_resolutions` on the ticket — these surface on the dashboard for the US team member.
-8. **Ticket Manager** either appends the message to an existing open ticket or creates a new one.
-9. **Incident Clustering Worker** checks if the new ticket correlates with other recent tickets by category + geography + time window. If a cluster threshold is crossed, an Incident is created (or the ticket is linked to an existing incident).
-10. **Notification Router** fires alerts based on severity, category, and incident status.
-11. The ticket, incident links, and all enrichments are written to the database and search index.
-12. Dashboard receives a real-time update via WebSocket.
+   - If it matches a known issue with a high-confidence solution, the bot responds in the agent's language with the fix and asks "Did that help?"
+   - If the agent confirms resolution → log the interaction (no ticket created).
+   - Otherwise → message continues into the pipeline.
+5. **Ticket Manager** either appends the message to an existing open ticket or creates a new placeholder ticket (`category: 'other'`, `severity: 'medium'`).
+6. **Message persistence** stores the raw text on the ticket with `deliveryStatus: 'sent'` (inbound default), translation/classification still pending.
+7. **First realtime broadcast** — `emitTicketEvent` fires `ticket:changed` to all connected dashboards. **This is where the operator sees the new message** (~50–100 ms after the webhook).
+8. **Translation Worker** and **Classification Worker** run in parallel (`Promise.allSettled`) on the original-language text. Translation hits the in-memory LRU cache first; on miss, Claude Haiku is called. Classifier runs on the original text (multilingual Haiku) with a low-confidence rescue path that re-classifies on the translated English if `confidence < 0.7`.
+9. **Patch + reconcile** — the message row gets `translatedText`, `originalLanguage`, `translationConfidence`, `classification`. If the placeholder ticket's category needs reconciling, it's updated (or, if the new message belongs on a different category than an appended-to existing ticket, split into a new ticket).
+10. **Knowledge Base Retrieval** searches resolved tickets for similar issues and attaches the top matches as `suggested_resolutions` on the ticket.
+11. **Notification Router** fires Slack alerts based on severity and category. The auto-intake checklist is enqueued onto the outbound queue (so the field agent gets an immediate "we got your message, here's what we need" prompt back).
+12. **Second realtime broadcast** — `ticket:changed` fires again; dashboards refetch with the enriched category, translation, and KB matches.
+13. **Incident Clustering Worker** checks if the new ticket correlates with other recent tickets by category + geography + time window. If a cluster threshold is crossed, an Incident is created (or linked).
 
 ### 2.3 Message Lifecycle (US Team → Agent)
 
-1. US team member types a response in English on the dashboard. They can optionally select a suggested resolution from the knowledge base and edit it, or write from scratch.
-2. API server validates and persists the response.
-3. **Translation Worker** translates from English into the agent's preferred language.
-4. The translated message is sent through the **Egress Adapter** to the WhatsApp Business API.
-5. Delivery receipts are tracked and surfaced on the dashboard.
-6. When the ticket is resolved, the **Knowledge Base Indexer** evaluates the resolution for inclusion in the knowledge base (see Section 3.9).
+The 0.4.0 outbound queue decouples the dashboard from Twilio's network latency. The operator's `POST /messages` ack drops from ~600–800 ms to ~50 ms; the field agent's perceived round-trip shortens by exactly that amount, and a single transient Twilio failure no longer silently loses the message — BullMQ retries up to 3 times with exponential backoff before marking the row `failed`.
+
+1. US team member types a response in English on the dashboard. They can pick a Claude-drafted suggestion, a KB-suggested resolution, or write from scratch.
+2. **API server persists the Message row** with `deliveryStatus: 'pending'`, `translatedText` pre-filled with the English text (so the timeline has something to render), `whatsappMessageId: null`. The ticket flips to `waiting_on_agent`.
+3. **First realtime emit** — `ticket:changed` fires; the dashboard renders the bubble with a pulsing "sending" chip. The API returns 200 in ~50 ms.
+4. **Enqueue** — the send is pushed onto the `outbound-whatsapp` BullMQ queue (job id = `messageId` for idempotency). Falls back to inline processing if Redis is unhealthy.
+5. **Outbound worker** (`outbound-pipeline.ts`, concurrency 4) picks up the job, resolves the target language (last inbound's `originalLanguage`, falling back to `Agent.preferredLanguage`), calls `translateResponse` (cache → Claude on miss → skip if target = en), enforces per-country length caps, and calls `sendWhatsAppMessage` with a 10 s timeout.
+6. **Patch the row** — on success, `deliveryStatus: 'sent'`, `whatsappMessageId: <SID>`, final translated text. On terminal failure (after retries), `deliveryStatus: 'failed'`, `deliveryError: <reason>`.
+7. **Second realtime emit** — `ticket:changed` fires again; the dashboard's "sending" chip flips to `✓` (or a red "✗ failed" chip on terminal failure, with the error in the tooltip).
+8. **Twilio status webhook** later writes `deliveredAt` / `readAt` (and `deliveryStatus: 'delivered' | 'read'`) when WhatsApp confirms delivery to the device.
+9. When the ticket is eventually resolved, the **Knowledge Base Indexer** evaluates the resolution for inclusion in the knowledge base (see Section 3.9).
 
 ---
 
@@ -251,8 +275,10 @@ The delta between `agent_timestamp` and `server_received_at` is a key metric. It
 
 **Resilience:**
 - Webhook endpoint returns `200 OK` immediately after enqueuing; processing is async.
-- Idempotency via `external_id` deduplication.
+- Idempotency via `external_id` deduplication (Message.whatsappMessageId is `@unique`; duplicate webhooks short-circuit at step 1 of the pipeline).
 - Dead-letter queue for messages that fail normalization.
+- **10 s timeout on the Twilio send call** (`integrations/whatsapp.ts`, added in 0.4.0). Wraps `client.messages.create` in a `Promise.race` against a tracked timer so a stalled carrier hop can't burn a worker slot for Node's default ~2 min TCP timeout.
+- **Outbound BullMQ queue** (see §3.5b) absorbs Twilio outages and flaky last-mile delivery: 3 retries with exponential backoff before the row is marked `failed`. A single transient Twilio 5xx no longer surfaces as a lost message.
 
 ---
 
@@ -357,6 +383,7 @@ DecisionTree
 **Critical implementation details:**
 
 - **Glossary/terminology management:** Build a custom glossary per language pair with fintech and product-specific terms. "Lottery" in the operational context, transaction types, error message strings, branch names. This glossary is version-controlled and deployable without a code change.
+- **In-memory translation cache** (shipped in 0.4.0): `translateCached` wraps both `translateMessage` and `translateResponse` with a per-process LRU (1000 entries, 24 h TTL, key shape `${targetLanguage}::${text}`). Only confident results (`>= 0.7`) are cached. Cache hits collapse the ~300–500 ms Claude Haiku call to a Map lookup, which is the dominant win for canned outbound phrases (auto-intake checklists, operator templates, "Your ticket has been resolved"). Per-process and per-machine — survives a worker but not a deploy.
 - **Store both original and translated text.** Every message in the database has `original_text`, `original_language`, `translated_text`, `translation_confidence`. The dashboard shows the English translation by default with a toggle to reveal the original.
 - **Voice note pipeline:** WhatsApp voice notes → download `.ogg` file → Google Speech-to-Text (supports Haitian Creole) → text in original language → translation pipeline. The transcript is attached to the ticket alongside the audio file.
 - **Confidence thresholds:** If translation confidence is below a configurable threshold (e.g., 0.7), flag the message on the dashboard with a "translation may be inaccurate" warning and surface the original text prominently.
@@ -454,6 +481,11 @@ Message
   - content_type (text | image | audio | video)
   - media_urls (array)
   - classification (JSON, only on inbound)
+  - whatsapp_message_id (unique, nullable — null while delivery_status='pending')
+  - delivery_status (pending | sent | delivered | read | failed)   ← NEW (0.4.0)
+  - delivery_error (text, nullable — populated when status='failed')  ← NEW (0.4.0)
+  - delivered_at (nullable — set by Twilio status webhook)
+  - read_at (nullable — set by Twilio status webhook)
   - created_at
 
 InternalUser
@@ -524,6 +556,30 @@ SLA deadlines are computed at ticket creation and recalculated if severity chang
 - **Extended SLAs:** Haiti and DRC get 1.5x the standard SLA windows to account for the reality that delivery confirmation of the response may itself be delayed. The US team's response time is measured at the point they send, but the SLA budget includes buffer for delivery uncertainty.
 - **Delivery-aware resolution:** A ticket is not considered "response delivered" until a WhatsApp delivery receipt is received. If the US team responds but the agent hasn't received it after 2 hours (no delivery receipt), the dashboard shows a "Response pending delivery" warning with an amber badge. This prevents the team from assuming an issue is handled when the agent hasn't actually seen the reply.
 - **Connectivity-pause rules:** If the system detects a regional connectivity outage (see Section 3.7), SLA clocks for all tickets from that region are paused until connectivity resumes. This prevents mass SLA breaches caused by infrastructure outside anyone's control.
+
+---
+
+### 3.5b Outbound Queue (BullMQ)
+
+**Purpose:** Decouple the dashboard from Twilio's network latency and survive flaky last-mile delivery to third-world carriers without silently losing messages. Added in 0.4.0.
+
+**Files:**
+- `apps/api/src/services/outbound-queue.ts` — queue handle + `enqueueOutbound` (3 retries, exponential backoff 2 s → 4 s → 8 s, fallback to inline send if Redis unhealthy).
+- `apps/api/src/services/outbound-pipeline.ts` — `processOutboundMessage` (translate → length cap → Twilio send → patch row) and `markOutboundFailed` (terminal failure path).
+- `apps/api/src/services/outbound-worker.ts` — BullMQ Worker (concurrency 4). On `failed` event, if BullMQ has exhausted `opts.attempts`, calls `markOutboundFailed` to flip `deliveryStatus`.
+
+**Flow:**
+
+1. `POST /api/tickets/:id/messages` (and `POST /api/tickets/outreach`, and the auto-intake fire-and-forget in `message-pipeline.ts`) creates the Message row with `deliveryStatus: 'pending'`, `translatedText` pre-filled with the English text, `whatsappMessageId: null`. Emits `ticket:changed` and returns 200 in ~50 ms.
+2. Job is enqueued with `jobId = messageId` (idempotent enqueue).
+3. Worker drains the queue at concurrency 4. Translation cache hit → ~0 ms. Cache miss → Claude Haiku call. Twilio call wrapped in a 10 s `Promise.race` timeout.
+4. Success: row patched to `deliveryStatus: 'sent'`, `whatsappMessageId: <SID>`, final translated text. Emit `ticket:changed`.
+5. Transient failure: BullMQ retries with exponential backoff.
+6. Terminal failure (retries exhausted): `markOutboundFailed` writes `deliveryStatus: 'failed'`, `deliveryError: <truncated 500-char reason>`. Emit `ticket:changed`. Dashboard surfaces a red "✗ failed" chip with the reason in the tooltip.
+
+**Why this matters for high-latency users:** A single transient Twilio/WhatsApp 5xx used to surface as a dashboard 500 — and since `POST /messages` was synchronous, the operator had no signal that their message vanished. The queue makes resilience cheap (one retry knob) and makes failure visible (the chip). Both directly shorten the round-trip the field agent waits for: faster ack means faster *next* message from the operator; visible failures mean nothing falls through the cracks.
+
+**Graceful degradation:** identical to the inbound queue. If `REDIS_URL` is unset or the connection isn't healthy, `enqueueOutbound` synchronously falls back to `processOutboundMessage` inline. Dev mode and emergency-Redis-outage scenarios keep working with no code change.
 
 ---
 
@@ -800,10 +856,13 @@ The health score is computed as: median message delivery delay over a 30-minute 
 
 **c) Outbound message optimization:**
 All messages sent to Haiti/DRC agents are subject to:
+- **Async queued send (0.4.0):** `POST /api/tickets/:id/messages` returns ~50 ms after persisting a `pending` Message row; the actual Twilio call runs on the `outbound-whatsapp` BullMQ worker with 3 retries (exponential backoff). See §3.5b. Replaces the previous synchronous ~600–800 ms send. The operator can move on to the next ticket immediately; the dashboard timeline shows a "sending" chip until the worker patches the row.
+- **Twilio 10 s timeout:** every send is wrapped in a `Promise.race` against a tracked timer so a stalled carrier hop can't burn a worker slot for Node's default ~2 min TCP timeout.
+- **Translation cache** (`integrations/translation.ts`, see §3.3): canned outbound phrases (auto-intake checklists, operator templates) collapse to a Map lookup, skipping the ~300–500 ms Claude Haiku call.
 - **Text compression:** Messages are kept under 1,000 characters. Longer messages are split into numbered parts ("1/3", "2/3", "3/3") so partial delivery still provides useful information.
 - **No rich media unless requested:** Bot responses and system notifications are text-only with quick-reply buttons. No images, PDFs, or video links unless the agent explicitly asks.
 - **Staggered sending:** Incident broadcasts to Haiti/DRC agents are sent in batches of 50 with 10-second gaps to avoid overwhelming the local mobile infrastructure.
-- **Delivery receipt tracking:** Every outbound message is tracked for delivery. Messages undelivered after 4 hours are flagged on the dashboard. Messages undelivered after 24 hours trigger a "connectivity lost" status on the agent's profile.
+- **Delivery receipt tracking:** Every outbound message is tracked for delivery. The `Message.deliveryStatus` enum (`pending → sent → delivered → read`, or `failed` if retries exhaust) is the source of truth — surfaced on the dashboard as a pulsing "sending" chip, a `✓` / `✓✓` tick, or a red "✗ failed" chip. Messages undelivered after 4 hours are flagged on the dashboard. Messages undelivered after 24 hours trigger a "connectivity lost" status on the agent's profile.
 
 **d) Agent connectivity status:**
 Each agent has a derived `connectivity_status` field on their profile, computed from recent message delivery patterns:
@@ -985,7 +1044,7 @@ realtime service.
 # Tickets
 GET    /api/tickets                        # List with filters, pagination, sort
 GET    /api/tickets/:id                    # Detail with messages, suggested resolutions, incident link
-POST   /api/tickets/:id/messages           # Send a response (triggers translate + WhatsApp send)
+POST   /api/tickets/:id/messages           # Persist pending Message + enqueue outbound (returns ~50 ms; worker translates + sends + patches deliveryStatus)
 PATCH  /api/tickets/:id                    # Update status, severity, category, assignment, tags, incident link
 POST   /api/tickets/:id/notes              # Add internal note
 POST   /api/tickets/:id/resolve            # Resolve with resolution_summary (triggers KB indexer)
@@ -1090,7 +1149,13 @@ PUT    /api/settings/bot                   # Update bot configuration
 │       │   │   ├── translation.ts
 │       │   │   ├── classification.ts
 │       │   │   ├── embedding.ts        # Vector embedding generation
-│       │   │   └── notification.ts
+│       │   │   ├── notification.ts
+│       │   │   ├── message-pipeline.ts # Inbound: ticket → store → emit → translate/classify → patch → emit
+│       │   │   ├── queue.ts            # Inbound BullMQ queue (queue-worker.ts drains)
+│       │   │   ├── queue-worker.ts
+│       │   │   ├── outbound-queue.ts   # Outbound BullMQ queue (0.4.0)
+│       │   │   ├── outbound-pipeline.ts # Outbound: translate (cached) → Twilio (10s) → patch deliveryStatus
+│       │   │   └── outbound-worker.ts
 │       │   ├── workers/
 │       │   │   ├── translate.ts
 │       │   │   ├── classify.ts

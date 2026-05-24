@@ -36,6 +36,8 @@ export interface Agent {
   branch: Branch;
 }
 
+export type DeliveryStatus = "pending" | "sent" | "delivered" | "read" | "failed";
+
 export interface Message {
   id: string;
   direction: "inbound" | "outbound";
@@ -49,6 +51,11 @@ export interface Message {
   createdAt: string;
   deliveredAt: string | null;
   readAt: string | null;
+  // Outbound queue lifecycle: 'pending' until Twilio accepts, 'sent'
+  // on success, 'failed' if retries exhaust. Inbound rows are 'sent'
+  // by default. Optional for forwards-compat with any cached old data.
+  deliveryStatus?: DeliveryStatus;
+  deliveryError?: string | null;
 }
 
 export interface KnowledgeArticle {

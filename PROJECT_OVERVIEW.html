@@ -95,7 +95,7 @@
   }
   h2 .num {
     display: inline-block;
-    width: 28px;
+    width: 44px;
     color: var(--muted);
     font-weight: 500;
     font-variant-numeric: tabular-nums;
@@ -104,7 +104,7 @@
     font-size: 15px;
     color: var(--muted);
     margin: 0 0 24px;
-    padding-left: 28px;
+    padding-left: 44px;
   }
   h3 {
     font-size: 17px;
@@ -425,6 +425,15 @@
           The next agent who reports the same issue gets a head-start instead of starting from zero.
         </div>
       </div>
+      <div class="idea">
+        <div class="n">6</div>
+        <div class="body">
+          <strong>The system asks the first follow-up question itself.</strong>
+          When a new ticket forms, an auto-intake prompt is sent back to the agent in their
+          language — "What's the transaction ID? When did this start?" — so by the time an
+          operator opens the ticket, the agent's answer is often already waiting.
+        </div>
+      </div>
     </div>
   </section>
 
@@ -439,14 +448,21 @@
         <li>Twilio delivers it to our API as a <b>webhook</b>. The API responds instantly so WhatsApp isn't blocked.</li>
         <li>The message is <b>de-duplicated</b> so a Twilio retry can't create a phantom ticket.</li>
         <li>We look up (or auto-create) the <b>agent</b> by phone number — country comes from the country code.</li>
-        <li>Claude Haiku <b>translates</b> the message to English and <b>classifies</b> it (category, severity, tags) — in parallel, ~1 second total.</li>
-        <li>We <b>find or create a ticket</b> — a new message from an open conversation appends; otherwise we open a fresh one.</li>
+        <li>We <b>find or create a ticket</b> right away — a new message from an open conversation appends; otherwise we open a placeholder. The message row is persisted with the raw original text.</li>
+        <li>Socket.IO fires <b>ticket:changed</b> immediately. <b>This is when the operator sees the new message</b> — ~50-100ms after the webhook fired. The category chip just says "other" for now.</li>
+        <li>Claude Haiku now <b>translates</b> the message to English and <b>classifies</b> it (category, severity, tags) — in parallel. Translation hits an in-memory cache first; canned phrases return in ~0ms.</li>
+        <li>The message row is <b>patched</b> with the English translation, classification, and confidence. The ticket's placeholder category is reconciled with the real category.</li>
         <li>The knowledge base <b>suggests past resolutions</b> for the same kind of problem.</li>
         <li>If three similar tickets have landed in the same country in 30 minutes, we <b>group them into an incident</b>.</li>
         <li>Critical and high-severity tickets fire a <b>Slack notification</b>.</li>
-        <li>Every open dashboard refreshes over <b>Socket.IO</b> — no one has to hit reload.</li>
+        <li>Socket.IO fires <b>ticket:changed</b> a second time — the dashboard refetches and the category chip, translation, and KB suggestions all settle into place.</li>
+        <li>For new tickets, an <b>auto-intake prompt</b> is queued back to the agent in their language, asking the follow-up the operator would have asked next.</li>
       </ol>
     </div>
+
+    <p style="margin-top: 14px; color: var(--ink-soft); font-size: 14.5px;">
+      The reorder (ticket first, emit, <em>then</em> translate) is the headline change for high-latency users. The operator sees the message ~500ms sooner, which means the agent on the slow connection hears back ~500ms sooner.
+    </p>
   </section>
 
   <!-- ── Features ──────────────────────────────────── -->
@@ -478,12 +494,22 @@
       <div class="card">
         <div class="pill">Realtime</div>
         <h4>Live everything</h4>
-        <p>New ticket arrives → it pops in at the top. SLA timer hits 30 minutes → it turns red. Another teammate resolves the ticket you're looking at → your view updates. No refresh button needed.</p>
+        <p>New ticket arrives → it pops in at the top. SLA timer hits 30 minutes → it turns red. Another teammate resolves the ticket you're looking at → your view updates. WhatsApp-style delivery ticks (✓ sent → ✓✓ delivered → blue ✓✓ read) appear on every outbound message. No refresh button needed.</p>
       </div>
       <div class="card">
         <div class="pill">SLA</div>
         <h4>Country-aware SLAs</h4>
         <p>Haiti and DRC get 1.5× the standard SLA window because the agent's network adds real delay. The clock starts when the agent <em>sent</em> the message, not when our server happened to receive it.</p>
+      </div>
+      <div class="card warn">
+        <div class="pill">Reliability</div>
+        <h4>Resilient outbound sends</h4>
+        <p>Operator hits send → the dashboard sees a "sending" message instantly while a background worker handles the Twilio call with three retries and exponential backoff. A flaky Haitian carrier no longer surfaces as a dashboard error or a lost reply.</p>
+      </div>
+      <div class="card">
+        <div class="pill">Auto-intake</div>
+        <h4>System asks the first question</h4>
+        <p>The moment a new ticket forms, a category-specific intake prompt is queued back to the agent in their language — "Which app version are you on?" or "What's the transaction ID?" — so the answer is often already there when an operator opens the ticket.</p>
       </div>
     </div>
   </section>
@@ -497,7 +523,7 @@
       <div class="card">
         <div class="pill">1 of 5</div>
         <h4>Translation</h4>
-        <p>Inbound messages → English. Outbound English replies → the agent's language. If the message is already English on either side, we skip the LLM entirely and save ~750ms.</p>
+        <p>Inbound messages → English. Outbound English replies → the agent's language. If the message is already English on either side, we skip the LLM entirely. There's also an in-memory <b>translation cache</b> — repeat phrases (canned intake prompts, "Your ticket has been resolved") return in ~0ms instead of paying the ~750ms Claude call. Both directions, 1,000-entry LRU, 24-hour TTL.</p>
       </div>
       <div class="card">
         <div class="pill">2 of 5</div>
@@ -563,19 +589,70 @@
     </div>
   </section>
 
+  <!-- ── Outbound queue ──────────────────────────── -->
+  <section>
+    <h2><span class="num">07</span>How replies actually get sent</h2>
+    <p class="subhead">The newest piece of the platform — the operator never waits for Twilio.</p>
+
+    <p>
+      The first version of the system sent replies the obvious way: operator clicks send → API calls
+      Twilio → API waits → API responds to the dashboard. That worked, but it had two problems.
+      A flaky moment with a Haitian carrier would surface as a dashboard error, and the
+      operator was stuck waiting half a second for translation plus another half second for the
+      WhatsApp leg before they could move to the next ticket.
+    </p>
+
+    <p>
+      The new path treats the send as a job, not a request:
+    </p>
+
+    <div class="flow">
+      <ol>
+        <li>Operator clicks send. The API <b>creates the message row immediately</b> with status <code>pending</code> and returns. The dashboard shows the message with a "sending" indicator right away.</li>
+        <li>A small <b>BullMQ job</b> is enqueued onto Redis with the message ID and target language.</li>
+        <li>A background <b>worker</b> picks up the job, translates the text if needed, applies the country-specific length cap, and calls Twilio.</li>
+        <li>On success: the message row flips to <code>sent</code> with the Twilio SID attached, and Socket.IO broadcasts the change to the open dashboard.</li>
+        <li>On failure: BullMQ retries three times with exponential backoff. If it still fails, the row goes to <code>failed</code> with the error message stored, so the operator sees exactly what went wrong.</li>
+      </ol>
+    </div>
+
+    <p style="margin-top:18px;">
+      Every message in the database now carries a <code>deliveryStatus</code> —
+      <code>pending</code> → <code>sent</code> → <code>delivered</code> → <code>read</code>, or
+      <code>failed</code> if it didn't land. That's what powers the WhatsApp-style ticks in the UI,
+      and it gives operators an honest answer to "did my reply actually reach the agent?" instead of
+      a hopeful guess. The same machinery also carries the auto-intake prompts, so a Twilio hiccup
+      doesn't lose them either.
+    </p>
+
+    <p style="color: var(--muted); font-size: 13.5px;">
+      If Redis is unreachable in development or during an outage, the worker falls back to running
+      inline — no message is ever silently dropped. The Twilio call itself is wrapped in a 10-second
+      timeout race so a stalled carrier hop can't burn a worker slot for Node's ~2-minute default.
+    </p>
+  </section>
+
   <!-- ── Performance ──────────────────────────────── -->
   <section>
-    <h2><span class="num">07</span>How fast it actually is</h2>
+    <h2><span class="num">08</span>How fast it actually is</h2>
     <p class="subhead">Measured against the live deployment on Railway, not theoretical.</p>
 
     <div class="stats">
       <div class="stat">
-        <div class="num">~1.3s</div>
-        <div class="lbl">Agent presses send → message visible on dashboard (English)</div>
+        <div class="num">~50–100ms</div>
+        <div class="lbl">Webhook arrives → message visible on dashboard (early socket emit)</div>
       </div>
       <div class="stat">
-        <div class="num">~700ms</div>
-        <div class="lbl">Claude Haiku translation, per call</div>
+        <div class="num">~50ms</div>
+        <div class="lbl">Operator clicks send → API returns (Twilio handled async on the queue)</div>
+      </div>
+      <div class="stat">
+        <div class="num">~1.3s</div>
+        <div class="lbl">Agent presses send → fully classified ticket settles (English)</div>
+      </div>
+      <div class="stat">
+        <div class="num">~0ms / ~700ms</div>
+        <div class="lbl">Translation cache hit vs miss (Claude Haiku)</div>
       </div>
       <div class="stat">
         <div class="num">~200ms</div>
@@ -590,22 +667,23 @@
         <div class="lbl">Median translation confidence on Haitian Creole (1.0 = perfect)</div>
       </div>
       <div class="stat">
-        <div class="num">124</div>
-        <div class="lbl">Automated tests across 13 files</div>
+        <div class="num">156</div>
+        <div class="lbl">Automated tests across 16 files</div>
       </div>
     </div>
 
     <p style="margin-top:18px; color: var(--ink-soft); font-size: 14.5px;">
-      The two biggest wins over the original design: translation and classification now run
-      <strong>in parallel</strong> (saves ~700ms per non-English message), and already-English messages
-      <strong>skip the LLM entirely</strong> via a small heuristic. Both changes came from measuring
-      real production traffic, not guessing.
+      The biggest wins for high-latency users: <strong>the dashboard sees inbound messages before translation runs</strong>
+      (the operator can start reading ~500ms sooner), <strong>outbound sends are queued</strong> (a flaky Twilio leg
+      retries instead of vanishing), <strong>translations are cached</strong> (canned phrases skip the LLM entirely), and
+      <strong>the Twilio call has a 10-second timeout</strong> (no more stuck workers). Every shaved millisecond on our
+      side is a millisecond the agent on the slow connection doesn't have to wait.
     </p>
   </section>
 
   <!-- ── Tech stack ──────────────────────────────── -->
   <section>
-    <h2><span class="num">08</span>The technology, briefly</h2>
+    <h2><span class="num">09</span>The technology, briefly</h2>
     <p class="subhead">What it's built with, and the one-line reason for each pick.</p>
 
     <table class="tech">
@@ -659,7 +737,7 @@
 
   <!-- ── Docs map ─────────────────────────────────── -->
   <section>
-    <h2><span class="num">09</span>If you want to go deeper</h2>
+    <h2><span class="num">10</span>If you want to go deeper</h2>
     <p class="subhead">The full documentation set, in suggested reading order.</p>
 
     <div class="docs">
@@ -680,8 +758,8 @@
   </section>
 
   <footer>
-    <div>Nclusion Field Agent Support · v0.3.0</div>
-    <div>Generated from 14 markdown files in this repo</div>
+    <div>Nclusion Field Agent Support · v0.3.0+</div>
+    <div>Generated from 14 markdown files in this repo · Refreshed 2026-05-23</div>
   </footer>
 
 </main>

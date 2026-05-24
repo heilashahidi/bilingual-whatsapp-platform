@@ -5,7 +5,6 @@ import { emitTicketEvent } from "../services/realtime";
 import { indexResolvedTicket } from "../services/kb-indexer";
 import { recordEvent } from "../services/audit";
 import { notifyMention } from "../services/notifier";
-import { sendAgentResponse } from "../integrations/whatsapp";
 import { enqueueOutbound } from "../services/outbound-queue";
 import { suggestReplies } from "../services/reply-suggester";
 import { requireRole } from "../middleware/auth";
@@ -274,6 +273,10 @@ router.patch("/:id", requireRole("admin", "operations", "engineering", "support"
 
   if (status === "resolved") {
     data.resolvedAt = new Date();
+  } else if (status && before.status === "resolved" && status !== "closed") {
+    // Re-opening a resolved ticket — clear resolvedAt so the resolution
+    // banner / SLA calc don't show a stale "resolved at X" timestamp.
+    data.resolvedAt = null;
   }
 
   const ticket = await prisma.ticket.update({
@@ -463,25 +466,18 @@ router.post("/outreach", async (req: Request, res: Response) => {
     return res.status(404).json({ error: "Agent not found" });
   }
 
+  // Create the ticket + pending message row up front, then enqueue
+  // the Twilio send. Operator sees the new ticket immediately in the
+  // dashboard; the message starts as deliveryStatus='pending' and
+  // flips to 'sent' (with a SID) or 'failed' once the worker drains.
   try {
-    // Translate + send WhatsApp (same pipeline used for replies).
-    const { messageSid, translatedText } = await sendAgentResponse(
-      agent.phoneNumber,
-      message.trim(),
-      agent.preferredLanguage,
-      agent.country
-    );
-
-    // SLA: same computation as the inbound pipeline.
     const slaProfile = EXTENDED_SLA_COUNTRIES.includes(agent.country)
       ? SLA_DEFAULTS.extended
       : SLA_DEFAULTS.standard;
     const slaConfig = slaProfile[severity];
     const now = new Date();
+    const trimmed = message.trim();
 
-    // Create ticket + first message in a single transaction so a partial
-    // failure (e.g., DB hiccup after Twilio already sent) doesn't orphan
-    // the WhatsApp message.
     const ticket = await prisma.ticket.create({
       data: {
         agentId: agent.id,
@@ -496,7 +492,6 @@ router.post("/outreach", async (req: Request, res: Response) => {
         slaResolutionDeadline: new Date(
           now.getTime() + slaConfig.resolutionMinutes * 60000
         ),
-        // Caller initiated — they've "responded" as the opening act.
         slaFirstResponseMet: true,
         messages: {
           create: [
@@ -504,11 +499,11 @@ router.post("/outreach", async (req: Request, res: Response) => {
               direction: "outbound",
               senderType: "internal_user",
               senderId: req.user?.userId || null,
-              originalText: message.trim(),
+              originalText: trimmed,
               originalLanguage: "en",
-              translatedText,
+              translatedText: trimmed,
               contentType: "text",
-              whatsappMessageId: messageSid,
+              deliveryStatus: "pending",
             },
           ],
         },
@@ -528,6 +523,18 @@ router.post("/outreach", async (req: Request, res: Response) => {
     });
 
     emitTicketEvent("created", ticket.id);
+
+    const firstMessage = ticket.messages[0];
+    if (firstMessage) {
+      enqueueOutbound({
+        messageId: firstMessage.id,
+        ticketId: ticket.id,
+        agentPhone: agent.phoneNumber,
+        agentCountry: agent.country,
+        englishText: trimmed,
+        targetLanguage: agent.preferredLanguage,
+      }).catch((err) => console.error("  ✗ outreach enqueueOutbound failed:", err));
+    }
 
     res.json(ticket);
   } catch (error) {

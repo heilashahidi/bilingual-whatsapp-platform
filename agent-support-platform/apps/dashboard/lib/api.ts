@@ -70,7 +70,10 @@ export async function fetchTicket(
 export async function sendResponse(
   ticketId: string,
   text: string
-): Promise<{ message: Message; translatedText: string }> {
+): Promise<{ message: Message }> {
+  // The API now queues the Twilio send and returns a pending Message
+  // immediately. The translated text + delivery status arrive via the
+  // ticket:changed socket event once the worker completes.
   const res = await fetch(`${API_URL}/api/tickets/${ticketId}/messages`, {
     method: "POST",
     headers: {

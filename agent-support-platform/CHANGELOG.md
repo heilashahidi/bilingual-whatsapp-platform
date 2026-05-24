@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-23
+
+End-to-end latency resilience for field agents on slow third-world mobile networks. Focused on shaving server-side latency *and* on never silently losing a message when a flaky Twilio/WhatsApp leg fails.
+
+### Changed
+- **BREAKING — `POST /api/tickets/:id/messages` response shape.** Top-level `translatedText` removed; response is now `{ message }` only. Translation now happens on the outbound worker after the response returns, so the field isn't known at request time. The dashboard's `sendResponse` and any external consumers must read `translatedText` (and `deliveryStatus`) off the message that arrives via the `ticket:changed` socket event instead. See [API.md](docs/API.md#post-apiticketsidmessages).
+- **Inbound pipeline reorder.** `processInboundMessage` now: find/create ticket (with placeholder category if new) → store raw message → emit `ticket:changed` → translate + classify in parallel → patch message + reconcile category/severity → emit `ticket:changed` again. Dashboard-visible latency after a webhook drops from ~500 ms to ~50–100 ms. New tickets briefly appear as `other` / `medium` before settling.
+- **Composer post-send UX.** The "Sent. Translated as: …" preview is gone (the translation isn't known yet at send-time); replaced with a "Queued — status in conversation" chip. The translated text and delivery status surface on the message bubble itself in the timeline.
+
+### Added
+
+#### Outbound queue + delivery status
+- **`apps/api/src/services/outbound-queue.ts`, `outbound-pipeline.ts`, `outbound-worker.ts`** — new BullMQ queue `outbound-whatsapp` mirroring the inbound pattern: 3 retries, exponential backoff (2 s → 4 s → 8 s), concurrency 4, inline fallback if Redis is unhealthy.
+- **`POST /api/tickets/:id/messages`** and **`POST /api/tickets/outreach`** create the Message row with `deliveryStatus: 'pending'` and enqueue; the worker translates + sends + patches the row. Dashboard ack drops from ~600–800 ms to ~50 ms. The auto-intake send in `message-pipeline.ts` routes through the same queue.
+- **Schema (`Message.deliveryStatus`, `Message.deliveryError`)** — new `DeliveryStatus` enum (`pending`, `sent`, `delivered`, `read`, `failed`). Existing rows default to `sent`. Composite index `(deliveryStatus, createdAt)` for retry sweeping. Migration `20260523120000_add_delivery_status`.
+- **Delivery-state chips in the timeline** — `MessageBubble` renders a pulsing "sending" chip while pending, a red "✗ failed" chip on terminal failure (with the truncated `deliveryError` in the tooltip), and the existing `✓` / `✓✓` ticks once Twilio's status webhook fires.
+
+#### Translation cache
+- **In-memory LRU** in `apps/api/src/integrations/translation.ts` — 1000-entry cap, 24 h TTL, key shape `target::text`. Wraps both `translateMessage` and `translateResponse`. Cache hits skip the Claude Haiku call entirely (~300–500 ms → ~0 ms). Only confident results (`confidence >= 0.7`) are cached so stub fallbacks don't poison lookups. Per-process; survives a worker but not a deploy.
+
+#### Twilio resilience
+- **10 s timeout** on `client.messages.create` (`apps/api/src/integrations/whatsapp.ts`) using a `Promise.race` against a tracked timer. Replaces Node's default ~2-min TCP timeout, which would burn a worker slot on a stalled Twilio carrier hop.
+
+---
+
 ## [0.3.0] - 2026-05-23
 
 ### Changed

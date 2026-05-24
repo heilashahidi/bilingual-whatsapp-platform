@@ -70,6 +70,36 @@ function senderLabel(m: Message): string {
 
 function DeliveryStatus({ message }: { message: Message }) {
   if (message.direction !== "outbound") return null;
+
+  // Pending: queued for Twilio send. Inline spinner so the operator
+  // can see at a glance which messages are still in flight.
+  if (message.deliveryStatus === "pending") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-400"
+        title="Queued — waiting for WhatsApp send"
+      >
+        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" />
+        sending
+      </span>
+    );
+  }
+
+  // Failed: surface the reason. Without this the operator has no
+  // signal that the message didn't actually reach the field agent —
+  // exactly the silent-failure case the queue + retry was meant to
+  // protect against (a single failed Twilio leg used to vanish).
+  if (message.deliveryStatus === "failed") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-800"
+        title={message.deliveryError || "Send failed after retries"}
+      >
+        ✗ failed
+      </span>
+    );
+  }
+
   if (message.readAt)
     return (
       <span className="text-blue-300" title={`Read · ${new Date(message.readAt).toLocaleString()}`}>

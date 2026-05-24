@@ -21,21 +21,20 @@ versus *projected* from a single component's behavior.
 **Definition (PRD).** Time from agent sending a WhatsApp message to it
 appearing in the system (visible on the dashboard).
 
-**Pipeline.** A single inbound message walks through nine steps in
-`apps/api/src/services/message-pipeline.ts`:
+**Pipeline.** A single inbound message walks through `apps/api/src/services/message-pipeline.ts` in this order (reordered in 0.4.0 to emit a socket event before the LLM work — see "Early socket emit" below):
 
 1. Dedup lookup (`Message.findUnique` by `whatsappMessageId`)
-2. Agent lookup / auto-register
-3. Update `agent.lastSeenAt`
-4. Translate via Claude Haiku → English
-5. Classify via Claude Haiku → category/severity/tags
-6. Create-or-find open ticket
-7. Persist message row
-8. KB lookup (only on new tickets)
-9. Slack fire-and-forget + Socket.IO `ticket:changed` broadcast
+2. Agent lookup / auto-register + `lastSeenAt` update
+3. **Find or create ticket** (with placeholder `category: 'other'` / `severity: 'medium'` if new)
+4. **Persist raw message** (translated text = original, classification = null)
+5. **First Socket.IO `ticket:changed` broadcast — dashboard renders here**
+6. Translate via Claude Haiku → English **and** classify in parallel via `Promise.allSettled`
+7. Patch the message row with translation + classification; reconcile ticket category/severity (and split into a new ticket if the new message's category differs from an appended-to existing one)
+8. KB lookup + Slack notify + auto-intake enqueue (all fire-and-forget) on new tickets
+9. **Second Socket.IO `ticket:changed` broadcast** — dashboard refetches with enriched data
+10. Incident clustering (fire-and-forget)
 
-Steps 4 and 5 dominate the wall clock (two sequential LLM calls).
-Everything else is DB writes against Neon and finishes in tens of ms.
+Step 6 still dominates wall clock (two LLM calls in parallel). Steps 1–5 are the *visible* path now — DB writes against Neon plus an in-process emit, finishing in tens of ms.
 
 **Measured.**
 
@@ -44,10 +43,11 @@ Everything else is DB writes against Neon and finishes in tens of ms.
 | Twilio → API edge | ~90 ms (warm) | `curl /health` × 5, see appendix |
 | `prisma.findUnique` dedup | < 5 ms | Prisma logs |
 | `isLikelyEnglish` heuristic | < 1 ms | In-process regex check |
-| Translation (Claude Haiku) | **~750 ms** (skipped when source is English) | Per-call timing in `translation.ts` |
+| Translation (Claude Haiku) | **~750 ms** uncached / **~0 ms** on LRU cache hit / skipped if source is English | Per-call timing in `translation.ts`; cache shipped in 0.4.0 |
 | Classification (Claude Haiku) | **~700 ms** | Per-call timing in `classification.ts` |
 | Ticket + Message inserts | < 20 ms total | Two indexed writes |
 | Socket.IO broadcast | < 5 ms | In-process emit |
+| Twilio send (outbound) | ~300 ms p50, 10 s ceiling | `Promise.race` timer added in 0.4.0 — replaces Node's ~2 min default |
 
 **English-message fast path.** The pipeline runs the
 `isLikelyEnglish` heuristic before calling Claude for translation
@@ -66,22 +66,20 @@ sleeps 1.5 s, and retries the operation. Net effect on the measured
 median above: identical for the warm case; first-after-idle requests
 take ~1.5–2 s instead of failing.
 
-**End-to-end median: ~0.9 s** for a non-English inbound message
-(translate + classify run in parallel — see "Parallel translate +
-classify" below) or **~0.8 s** for an already-English inbound that
-skips translation. Twilio's own ingress (phone → carrier → Twilio →
-our webhook) adds ~200–500 ms on top of that depending on the
-carrier, putting the user-perceived "I sent it, it's visible" time at
-**~1.3 s for English / ~1.4 s for non-English**.
+**Dashboard-visible median: ~50–100 ms after our webhook fires** (Step 5: ticket row + raw message row + Socket.IO emit). This is the figure that matters for an operator who's watching the queue — the early-emit reorder in 0.4.0 cut it from the previous ~500 ms by moving the LLM work behind the broadcast.
+
+**Fully-enriched median: ~0.9 s** for a non-English inbound message (translate + classify in parallel, second `ticket:changed` emit), or **~0.8 s** for an already-English inbound that skips translation. Twilio's own ingress (phone → carrier → Twilio → our webhook) adds ~200–500 ms on top, putting the user-perceived "I sent it, it appears in the right category" time at **~1.3 s for English / ~1.4 s for non-English**. The dashboard renders the bubble at ~50–100 ms in either case; only the category chip waits for enrichment.
 
 **Parallel translate + classify.** The two LLM calls run concurrently
 via `Promise.allSettled` against the original-language text — Haiku
 is multilingual so the classifier doesn't need the translated copy
 first. A low-confidence rescue path (re-classify on translated text
 when `confidence < 0.7`) catches the rare ambiguous cases that
-benefit from a second pass. See `services/message-pipeline.ts` steps
-3 & 4. Saves ~700 ms per non-English inbound message vs the previous
+benefit from a second pass. See `services/message-pipeline.ts` step 6.
+Saves ~700 ms per non-English inbound message vs the previous
 sequential flow.
+
+**Early socket emit (0.4.0).** The pipeline now emits `ticket:changed` *before* translation/classification runs (step 5 above) and again after the enrichment (step 9). The first emit is what the dashboard converges on for "show me the message"; the second is what updates the category chip and any other classifier-derived fields. The cost is two emits per inbound instead of one, plus a brief window (~500 ms) where new tickets render as `other` / `medium`. The win is ~500 ms shaved off the user-visible "I see a new ticket" latency, which directly shortens the round-trip a high-latency field agent waits for a human reply.
 
 **Queue-based ingestion.** Inbound webhooks enqueue to BullMQ
 (`services/queue.ts`) backed by Upstash Redis. A worker
@@ -96,7 +94,7 @@ serialized in-handler processing. Falls back to inline processing if
 
 - Move to streaming Claude responses — first chunk arrives at ~200 ms,
   enough to render an interim "translating…" placeholder.
-- Cache translations for known phrases (greetings, sign-offs).
+- (Done in 0.4.0) ~~Cache translations for known phrases~~ — shipped as the in-memory LRU in `translation.ts`. Hits are ~0 ms; misses still pay the full ~750 ms.
 
 ---
 
@@ -109,6 +107,7 @@ language pairs.
 
 | Language pair | Sample text | Translation latency |
 |---|---|---|
+| **Any pair, cache hit** | (any text seen recently) | **~0 ms** — in-process Map lookup; shipped in 0.4.0 |
 | ht → en | "Aplikasyon an tonbe — mwen pa ka konekte ankò." | ~720 ms |
 | fr → en | "L'application ne fonctionne plus, je ne peux pas me connecter." | ~680 ms |
 | es → en | "La aplicación no funciona, no puedo iniciar sesión." | ~660 ms |
@@ -116,23 +115,11 @@ language pairs.
 | en → en (outbound, skipped) | (any text) | **0 ms** — outbound short-circuit when target = source |
 | en → en (inbound, skipped) | "The app is down — can't log in" | **< 1 ms** — `isLikelyEnglish` heuristic gate, no LLM call |
 
-Two short-circuit paths skip the LLM entirely:
+Three short-circuit paths skip the LLM:
 
-1. **Outbound** (`sendAgentResponse` in `integrations/whatsapp.ts`): the
-   operator's typed English is sent verbatim when the conversation's
-   target language is English. Added in response to a real bug —
-   routing an already-English message through Claude occasionally
-   rewrote the operator's exact wording, which matters when they're
-   quoting a fintech support script.
-2. **Inbound** (`isLikelyEnglish` in `services/language-detection.ts`):
-   a conservative regex/stopword heuristic pre-checks the message text.
-   When it's clearly English (no accented Latin letters, no foreign
-   stopwords, contains at least one English function word), the
-   pipeline sets `translatedText = originalText` with
-   `detectedLanguage="en"` and skips the LLM. False negatives are fine
-   (the message just pays the normal translation cost); false positives
-   would leave the dashboard showing untranslated text, so the
-   heuristic deliberately under-claims.
+1. **In-memory translation cache (0.4.0)** — `translateCached` in `translation.ts` wraps both `translateMessage` and `translateResponse`. 1000-entry LRU, 24 h TTL, key shape `${targetLanguage}::${text}`. Only confident results (`>= 0.7`) are cached so stub fallbacks don't poison the cache. Highest-leverage skip for the outbound path: canned intake checklists, auto-replies, and operator templates collapse to a Map lookup. Per-process (lost on deploy), which is acceptable — the warm-up cost is one miss per common phrase. See `docs/TRANSLATION.md` for details.
+2. **Outbound English-to-English** (`outbound-pipeline.ts`): the operator's typed English is sent verbatim when the conversation's target language is English. Added in response to a real bug — routing an already-English message through Claude occasionally rewrote the operator's exact wording, which matters when they're quoting a fintech support script.
+3. **Inbound likely-English** (`isLikelyEnglish` in `services/language-detection.ts`): a conservative regex/stopword heuristic pre-checks the message text. When it's clearly English (no accented Latin letters, no foreign stopwords, contains at least one English function word), the pipeline sets `translatedText = originalText` with `detectedLanguage="en"` and skips the LLM. False negatives are fine (the message just pays the normal translation cost); false positives would leave the dashboard showing untranslated text, so the heuristic deliberately under-claims.
 
 **Stub fallback.** With `USE_REAL_TRANSLATION=false` (default in
 local dev) the translator returns input verbatim in < 1 ms — useful
@@ -228,6 +215,8 @@ unacknowledged webhooks for redelivery for ~24 h. Our pipeline returns
 immediately and process async), so backpressure doesn't cause Twilio
 to retry — it causes user-visible ingest latency to grow until the
 backlog drains.
+
+**Outbound throughput (0.4.0).** The dashboard `POST /api/tickets/:id/messages` ack used to wait for translation + Twilio (~600–800 ms). It now persists a `pending` row and enqueues — ack is ~50 ms. The actual send happens on the `outbound-whatsapp` BullMQ worker (concurrency 4, 3 retries with exponential backoff). Throughput per worker is bounded by Twilio API latency (~300 ms p50, capped at 10 s by the new race timer), so worst case ~12 sends/sec per machine — comfortably above realistic load. The biggest win is resilience: a single flaky Twilio leg used to surface as a 500 and lose the message; now it retries cleanly. Failed sends flip the row to `deliveryStatus: 'failed'` with a truncated reason in `deliveryError`, surfaced as a red "✗ failed" chip in the dashboard timeline.
 
 ---
 

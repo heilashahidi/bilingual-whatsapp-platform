@@ -34,20 +34,20 @@ MessageSid=SM1234567890abcdef&From=whatsapp%3A%2B50937001001&To=whatsapp%3A%2B14
 
 **Response:** Always returns `200` with `<Response></Response>` immediately. Processing is asynchronous.
 
-**What happens next:** The message flows through the pipeline: normalize → translate → classify → find/create ticket → store → notify. See [Architecture](ARCHITECTURE.md) for the full flow.
+**What happens next:** The message flows through the pipeline: normalize → find/create ticket → store raw message → emit `ticket:changed` (dashboard wakes up here, ~50–100 ms after webhook) → translate + classify in parallel → patch message + reconcile category → emit `ticket:changed` again. See [Architecture](ARCHITECTURE.md) for the full flow.
 
 ### POST /webhooks/whatsapp/status
 
-Receives delivery status updates from Twilio for outbound messages.
+Receives delivery status updates from Twilio for outbound messages. Updates the matching `Message.deliveryStatus` column (and `deliveredAt` / `readAt` timestamps) so the dashboard's delivery-state chip converges with real-world delivery.
 
 **Payload fields:**
 
 | Field | Description |
 |---|---|
-| `MessageSid` | Twilio message ID |
-| `MessageStatus` | One of: `queued`, `sent`, `delivered`, `read`, `failed`, `undelivered` |
+| `MessageSid` | Twilio message ID — matched against `Message.whatsappMessageId` |
+| `MessageStatus` | One of: `queued`, `sent`, `delivered`, `read`, `failed`, `undelivered`. Maps to `Message.deliveryStatus` (with `undelivered` collapsing to `failed`) |
 | `To` | Recipient phone number |
-| `ErrorCode` | Error code if `failed` or `undelivered` |
+| `ErrorCode` | Error code if `failed` or `undelivered` — stored in `Message.deliveryError` |
 
 **Response:** Always `200`.
 
@@ -97,6 +97,8 @@ List tickets with filtering, sorting, and pagination.
       "messages": [
         {
           "translatedText": "The app keeps crashing when I try to send money",
+          "deliveryStatus": "sent",
+          "deliveryError": null,
           "createdAt": "2026-05-21T14:30:00Z"
         }
       ],
@@ -117,21 +119,24 @@ Full ticket detail including all messages, suggested resolutions, and bot conver
 
 ### POST /api/tickets/:id/messages
 
-Send a response from the US team to the agent. The response is translated to the agent's language and sent via WhatsApp.
+Send a response from the US team to the agent. **The send is queued, not awaited** — translation + Twilio handoff happen on the outbound BullMQ worker so the dashboard returns in ~50 ms instead of ~600–800 ms. The dashboard renders the pending message immediately and converges via `ticket:changed` once the worker finishes.
 
 **Request body:**
 ```json
 {
-  "text": "We're looking into the crash. Can you try clearing the app cache and reopening?",
-  "senderId": "internal-user-uuid"
+  "text": "We're looking into the crash. Can you try clearing the app cache and reopening?"
 }
 ```
 
+`senderId` is derived from the authenticated session — values in the body are ignored.
+
 **What happens:**
-1. Text is translated from English to the agent's preferred language.
-2. For Haiti/DRC agents, the message is truncated to 1,000 characters if needed.
-3. Translated message is sent via Twilio WhatsApp API.
-4. Ticket status changes to `waiting_on_agent`.
+1. The Message row is persisted with `deliveryStatus: "pending"` and `translatedText` pre-filled with the English text so the timeline has something to render.
+2. Ticket status flips to `waiting_on_agent`, audit event is recorded, `ticket:changed` is emitted.
+3. The send is enqueued on the `outbound-whatsapp` BullMQ queue (3 retries with exponential backoff; falls back to inline send if Redis is unhealthy).
+4. The outbound worker translates (cached), enforces per-country length caps (HT/DR 1,000 / 2,000 chars), calls Twilio (10 s timeout), and patches the row to `deliveryStatus: "sent"` with the Twilio SID. On terminal failure it sets `deliveryStatus: "failed"` and writes a truncated reason to `deliveryError`.
+
+**Breaking change in 0.4.0:** The response no longer includes a top-level `translatedText` field — translation runs on the worker after the response returns.
 
 **Response:**
 ```json
@@ -140,10 +145,12 @@ Send a response from the US team to the agent. The response is translated to the
     "id": "uuid",
     "direction": "outbound",
     "originalText": "We're looking into the crash...",
-    "translatedText": "Nou ap gade pwoblèm nan...",
-    "whatsappMessageId": "SM1234567890"
-  },
-  "translatedText": "Nou ap gade pwoblèm nan..."
+    "translatedText": "We're looking into the crash...",
+    "deliveryStatus": "pending",
+    "deliveryError": null,
+    "whatsappMessageId": null,
+    "createdAt": "2026-05-23T12:00:00Z"
+  }
 }
 ```
 
@@ -193,7 +200,7 @@ Returns three Claude Haiku-drafted reply candidates (direct / empathetic / inves
 
 ### POST /api/tickets/outreach
 
-Operator-initiated outbound message to an agent who has no open ticket (or no prior conversation). Creates a ticket as needed and sends the first message via Twilio.
+Operator-initiated outbound message to an agent who has no open ticket (or no prior conversation). Creates the ticket + first message row (with `deliveryStatus: "pending"`) and enqueues the WhatsApp send on the same `outbound-whatsapp` BullMQ queue as `POST /:id/messages`. The response returns the ticket immediately; the embedded first message converges to `sent` (or `failed`) once the worker drains.
 
 ### DELETE /api/tickets/:id
 

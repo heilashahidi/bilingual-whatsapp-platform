@@ -19,8 +19,9 @@ Meet agents where they already are (WhatsApp) and give the US team a purpose-bui
 
 ## Key Features
 
-- **WhatsApp ↔ Dashboard bridge** with transparent real-time translation
+- **WhatsApp ↔ Dashboard bridge** with transparent real-time translation, cached for repeated phrases (~0 ms hits)
 - **Five Claude Haiku surfaces:** translation, classification, AI-suggested reply drafts, incident summaries, and KB article drafts — see [AI_USAGE.md](agent-support-platform/docs/AI_USAGE.md)
+- **Latency-resilient send path** — both directions queued via BullMQ. Inbound webhook acks Twilio immediately and emits a Socket.IO event in ~50–100 ms (before translation/classification). Outbound dashboard send returns in ~50 ms; the worker handles Twilio with 3 retries + 10 s timeout. Failed sends surface as a red "✗ failed" chip in the timeline so nothing silently disappears on flaky third-world carrier legs.
 - **Three-pane Inbox** (sidebar · conversation list · ticket drawer overlay) with @-mentions on internal notes. The drawer is a portaled modal with a frosted-glass panel and works from the inbox, kanban, and list views alike.
 - **Automatic incident clustering** — detects when 3+ tickets in the same country and category arrive within 30 minutes; each cluster has a dedicated `/incidents/[id]` page with lifecycle controls (detected → confirmed → mitigating → resolved), editable root cause + resolution notes, and a contributing-tickets timeline
 - **Nav badges** — rose badge next to "Incidents" counts active incidents; slate badge next to "Tickets" counts unresolved tickets. Both refresh on the `ticket:changed` Socket.IO event.
@@ -123,7 +124,7 @@ cd agent-support-platform/apps/api
 npx vitest run --config vitest.config.ts
 ```
 
-124 tests across 13 files covering: the inbound message pipeline, all five
+156 tests across 16 files covering: the inbound message pipeline, all five
 Claude integrations, incident clustering, KB scoring, webhook signature
 validation, role guards, HTTP-level route contracts, and the Prisma
 retry helper (Neon auto-suspend recovery).

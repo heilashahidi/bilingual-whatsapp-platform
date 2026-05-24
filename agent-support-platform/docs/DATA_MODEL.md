@@ -108,11 +108,19 @@ Individual messages within a ticket conversation.
 | agentTimestamp | DateTime? | When the agent actually sent (from WhatsApp). Canonical time for SLAs |
 | serverReceivedAt | DateTime? | When the webhook arrived. Used to compute delivery delay |
 | deliveryDelay | Int? | Delta in seconds between agent send and server receipt |
-| whatsappMessageId | String? | Twilio/WhatsApp message ID for delivery tracking |
+| whatsappMessageId | String? | Twilio/WhatsApp message ID for delivery tracking. Null until the outbound worker hears back from Twilio. Unique constraint dedupes Twilio webhook retries |
+| deliveryStatus | Enum (DeliveryStatus) | `pending` → `sent` → `delivered` → `read`, or `failed` if all retries exhaust. Defaults to `sent`; inbound rows stay at `sent` |
+| deliveryError | String? | Last error from the outbound worker if `deliveryStatus = failed`. Truncated to 500 chars |
 | deliveredAt | DateTime? | When delivery receipt was received |
 | readAt | DateTime? | When read receipt was received |
 
 **The dual-timestamp design** is critical for Haiti/DRC. The `deliveryDelay` field is the connectivity health signal — a rolling median of this value per region powers the connectivity monitor.
+
+**`deliveryStatus` lifecycle** (outbound only):
+- `pending` — Message row created, send queued on the outbound BullMQ worker. Operator sees a "sending" chip in the timeline.
+- `sent` — Twilio accepted the payload and returned a SID. `whatsappMessageId` is now populated.
+- `delivered` / `read` — WhatsApp status webhook fired (`deliveredAt` / `readAt` also set).
+- `failed` — BullMQ's 3 retries (exponential backoff) all failed. `deliveryError` holds the truncated reason; the dashboard shows a red "✗ failed" chip. Added in migration `20260523120000_add_delivery_status`.
 
 ### Incident
 
@@ -235,6 +243,16 @@ Shipped in migration `20260522001855_add_indexes_and_unique_whatsapp_id`:
 
 @@unique([whatsappMessageId])             // on Message: idempotency on Twilio retries
 ```
+
+Added in migration `20260523120000_add_delivery_status`:
+
+```prisma
+@@index([deliveryStatus, createdAt])      // on Message: outbound retry sweeping + pending-job inspection
+```
+
+## Enums (referenced above)
+
+- `DeliveryStatus` — `pending`, `sent`, `delivered`, `read`, `failed`. Drives the outbound queue lifecycle on `Message.deliveryStatus`.
 
 ## pgvector Setup
 

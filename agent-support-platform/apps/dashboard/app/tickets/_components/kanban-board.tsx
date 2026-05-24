@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -72,11 +72,28 @@ export function KanbanBoard({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // IDs of tickets whose PATCH is currently in flight. While an ID is
+  // here we trust local (optimistic) state over the server snapshot —
+  // otherwise the realtime ticket:changed event races the PATCH commit
+  // and the parent re-render hands us a stale serverTickets that
+  // clobbers the optimistic move (card flips back to its old column).
+  const pendingRef = useRef<Set<string>>(new Set());
   const searchParams = useSearchParams();
   const { data: session } = useSession();
 
   useEffect(() => {
-    setTickets(serverTickets);
+    if (pendingRef.current.size === 0) {
+      setTickets(serverTickets);
+      return;
+    }
+    setTickets((prev) => {
+      const prevById = new Map(prev.map((t) => [t.id, t] as const));
+      return serverTickets.map((server) =>
+        pendingRef.current.has(server.id)
+          ? prevById.get(server.id) ?? server
+          : server
+      );
+    });
   }, [serverTickets]);
 
   // Require 8px of movement before a drag activates, so a click still
@@ -163,6 +180,7 @@ export function KanbanBoard({
     if (!ticket || ticket.status === newStatus) return;
 
     const previousStatus = ticket.status;
+    pendingRef.current.add(ticketId);
     setTickets((prev) =>
       prev.map((t) => (t.id === ticketId ? { ...t, status: newStatus } : t))
     );
@@ -174,6 +192,8 @@ export function KanbanBoard({
         prev.map((t) => (t.id === ticketId ? { ...t, status: previousStatus } : t))
       );
       setError(e instanceof Error ? e.message : "Failed to move ticket");
+    } finally {
+      pendingRef.current.delete(ticketId);
     }
   }
 

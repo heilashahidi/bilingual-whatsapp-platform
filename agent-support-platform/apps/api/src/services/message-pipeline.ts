@@ -7,9 +7,9 @@ import { recordEvent } from "./audit";
 import { clusterTicket } from "./incident-clusterer";
 import { translateMessage } from "../integrations/translation";
 import { classifyMessage } from "../integrations/classification";
-import { sendAgentResponse } from "../integrations/whatsapp";
 import { isLikelyEnglish } from "./language-detection";
 import { buildIntakePrompt } from "./intake-prompter";
+import { enqueueOutbound } from "./outbound-queue";
 
 /**
  * Process an inbound message through the full pipeline:
@@ -387,10 +387,11 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
   // time an operator opens the ticket, the agent has often replied
   // with the info already.
   //
-  // Fire-and-forget. The send goes through sendAgentResponse so it
+  // Fire-and-forget. The send goes through the outbound queue so it
   // gets translated into the agent's language (or skipped if the
-  // conversation is in English). The resulting outbound row is
-  // persisted to the conversation timeline like any operator reply.
+  // conversation is in English), retries on transient Twilio failure,
+  // and persists as a pending → sent message row visible in the
+  // dashboard timeline like any operator reply.
   if (shouldCreateNew && classification) {
     const intake = buildIntakePrompt({
       category: ticket!.category,
@@ -399,19 +400,14 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
       tags: ticket!.tags,
     });
     if (intake) {
+      // Target language follows the inbound — agent gets the intake
+      // in whatever language they wrote in. Goes through the outbound
+      // queue so it picks up the same retry/backoff and surfaces in
+      // the dashboard as a pending message immediately.
+      const target = (detectedLanguage as string) || agent.preferredLanguage;
       (async () => {
         try {
-          // Target language follows the inbound — agent gets the intake
-          // in whatever language they wrote in.
-          const target = (detectedLanguage as string) || agent.preferredLanguage;
-          const { messageSid, translatedText: sentText } =
-            await sendAgentResponse(
-              agent.phoneNumber,
-              intake,
-              target,
-              agent.country
-            );
-          await prisma.message.create({
+          const intakeMsg = await prisma.message.create({
             data: {
               ticketId: ticket!.id,
               direction: "outbound",
@@ -419,14 +415,22 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
               senderId: null,
               originalText: intake,
               originalLanguage: "en",
-              translatedText: sentText,
+              translatedText: intake,
               contentType: "text",
-              whatsappMessageId: messageSid,
+              deliveryStatus: "pending",
             },
           });
-          console.log(`  🤖 Sent auto-intake to ${agent.phoneNumber}`);
+          await enqueueOutbound({
+            messageId: intakeMsg.id,
+            ticketId: ticket!.id,
+            agentPhone: agent.phoneNumber,
+            agentCountry: agent.country,
+            englishText: intake,
+            targetLanguage: target,
+          });
+          console.log(`  🤖 Queued auto-intake to ${agent.phoneNumber}`);
         } catch (err) {
-          console.error("  ✗ Auto-intake send failed:", err);
+          console.error("  ✗ Auto-intake queue failed:", err);
         }
       })();
     }
