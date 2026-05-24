@@ -105,8 +105,6 @@ export async function suggestReplies(
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────
-
 function buildConversationForPrompt(
   messages: Array<{
     direction: string;

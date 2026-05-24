@@ -1,8 +1,8 @@
 import { prisma } from "./database";
 import type { AuthUser } from "../middleware/auth";
 
-// One small helper called from every mutation route. Fires and forgets:
-// if the audit insert fails, the underlying mutation still succeeds.
+// Fire-and-forget: if the audit insert fails, the underlying mutation
+// still succeeds.
 
 export type AuditAction =
   | "ticket_created"

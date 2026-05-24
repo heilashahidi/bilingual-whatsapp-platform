@@ -1,6 +1,5 @@
-// ─── RawMessage: The normalized envelope every inbound message
-//     is converted into, regardless of source (Twilio, Meta, etc.) ───
-
+// Normalized envelope every inbound message is converted into, regardless
+// of source (Twilio today, Meta Cloud API eventually).
 export interface RawMessage {
   source: "whatsapp";
   externalId: string; // WhatsApp message ID (for idempotency)
@@ -15,8 +14,6 @@ export interface RawMessage {
     profileName: string | null;
   };
 }
-
-// ─── Classification output from LLM ────────────────────────
 
 export interface ClassificationResult {
   category:
@@ -37,8 +34,6 @@ export interface ClassificationResult {
   confidence: number;
   likelyNetwork: boolean; // Haiti/DRC: is this a connectivity issue vs app issue?
 }
-
-// ─── SLA configuration per country ──────────────────────────
 
 export interface SlaConfig {
   firstResponseMinutes: number;
@@ -65,8 +60,6 @@ export const SLA_DEFAULTS: Record<string, Record<string, SlaConfig>> = {
 // Countries that use extended SLAs due to connectivity constraints
 export const EXTENDED_SLA_COUNTRIES = ["HT", "CD"];
 
-// ─── Bot session config per country ─────────────────────────
-
 export const BOT_SESSION_TTL: Record<string, number> = {
   HT: 7200, // 2 hours (Haiti — extended for connectivity)
   CD: 7200, // 2 hours (DRC — extended for connectivity)
@@ -80,8 +73,6 @@ export const BOT_MAX_MESSAGE_LENGTH: Record<string, number> = {
   DO: 2000, // DR — standard
 };
 
-// ─── Connectivity health thresholds ─────────────────────────
-
 export const CONNECTIVITY_THRESHOLDS = {
   healthyMaxDelaySeconds: 30,
   degradedMaxDelaySeconds: 300, // 5 minutes
@@ -90,8 +81,6 @@ export const CONNECTIVITY_THRESHOLDS = {
   deliveryPendingAlertHours: 2, // Flag undelivered outbound messages
   deliveryLostHours: 24, // Mark agent as offline
 };
-
-// ─── Incident clustering config per country ─────────────────
 
 export const CLUSTERING_CONFIG: Record<string, { timeWindowHours: number; minTickets: number }> = {
   HT: { timeWindowHours: 6, minTickets: 3 }, // Wider window for Haiti

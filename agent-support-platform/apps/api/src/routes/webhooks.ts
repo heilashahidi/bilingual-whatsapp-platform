@@ -7,14 +7,8 @@ import { enqueueInbound } from "../services/queue";
 
 const router = Router();
 
-// ─── Twilio signature validation middleware ─────────────────
-// In production, always validate. Skip in dev if needed.
-//
-// Built path-aware: validates against the actual URL Twilio called
-// (req.originalUrl) so the same middleware works for both the inbound
-// /webhooks/whatsapp endpoint and the /webhooks/whatsapp/status
-// delivery-receipt endpoint.
-
+// Path-aware so the same middleware works for both /webhooks/whatsapp and
+// the /webhooks/whatsapp/status delivery-receipt endpoint.
 const validateTwilio = (req: Request, res: Response, next: Function) => {
   if (process.env.NODE_ENV === "development" && process.env.SKIP_TWILIO_VALIDATION === "true") {
     return next();
@@ -43,14 +37,9 @@ const validateTwilio = (req: Request, res: Response, next: Function) => {
   next();
 };
 
-// ─── POST /webhooks/whatsapp ────────────────────────────────
-// Twilio sends incoming WhatsApp messages here.
-//
-// CRITICAL: Return 200 immediately. All processing is async.
-// If we don't respond quickly, Twilio will retry and create duplicates.
-
+// CRITICAL: Return 200 immediately and process async. If we don't respond
+// quickly, Twilio retries and creates duplicates.
 router.post("/whatsapp", validateTwilio, async (req: Request, res: Response) => {
-  // Respond to Twilio immediately — do NOT wait for processing
   res.status(200).send("<Response></Response>");
 
   try {
@@ -61,25 +50,18 @@ router.post("/whatsapp", validateTwilio, async (req: Request, res: Response) => 
     console.log(`  Body: ${req.body.Body?.substring(0, 100)}`);
     console.log(`  Media: ${req.body.NumMedia || 0} attachments`);
 
-    // Step 1: Normalize Twilio payload → RawMessage
     const rawMessage = normalizeInboundMessage(req.body, serverReceivedAt);
 
-    // Step 2: Enqueue for async pipeline processing. enqueueInbound
-    // pushes onto the BullMQ Redis-backed queue when REDIS_URL is
-    // configured, falling back to direct inline processing otherwise
-    // (dev mode without Redis, or Redis outage). Either way, the
-    // webhook responds to Twilio immediately — see above.
+    // enqueueInbound falls back to inline processing when REDIS_URL is unset
+    // or Redis is unreachable, so this is always non-blocking from Twilio's view.
     await enqueueInbound(rawMessage);
   } catch (error) {
-    // Log but don't crash — we already sent 200 to Twilio
+    // We already sent 200 — log but don't crash.
     console.error("✗ Error enqueuing inbound message:", error);
   }
 });
 
-// ─── POST /webhooks/whatsapp/status ─────────────────────────
-// Twilio sends delivery receipts here (sent, delivered, read, failed).
-// Used for Haiti/DRC delivery tracking.
-
+// Twilio delivery receipts (sent / delivered / read / failed).
 router.post("/whatsapp/status", validateTwilio, async (req: Request, res: Response) => {
   res.status(200).send("<Response></Response>");
 
@@ -123,12 +105,8 @@ router.post("/whatsapp/status", validateTwilio, async (req: Request, res: Respon
   }
 });
 
-// ─── POST /webhooks/slack ───────────────────────────────────
-// Stub for Slack's Interactivity Request URL. Our outbound messages
-// use URL-only buttons (no callbacks) but Slack still requires an
-// Interactivity URL to be configured before it stops warning the user.
-// This endpoint just acknowledges and discards.
-
+// Slack requires an Interactivity Request URL to be configured even though
+// our outbound messages use URL-only buttons — this just acknowledges.
 router.post("/slack", (_req: Request, res: Response) => {
   res.status(200).send();
 });

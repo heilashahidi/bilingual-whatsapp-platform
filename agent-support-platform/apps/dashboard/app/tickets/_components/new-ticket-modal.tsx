@@ -186,7 +186,6 @@ export function NewTicketModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ── Field wrapper ────────────────────────────────────────────────────
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block">
@@ -199,10 +198,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-// ── Agent picker ─────────────────────────────────────────────────────
-// Search-as-you-type with a debounced query against /api/agents?q=...
-// (see lib/api.ts → fetchAgents). Renders the first 6 matches.
-
+// Debounced search-as-you-type against /api/agents?q=…
 function AgentPicker({ value, onChange }: { value: Agent | null; onChange: (a: Agent | null) => void }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Agent[]>([]);

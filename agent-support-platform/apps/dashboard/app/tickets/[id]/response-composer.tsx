@@ -178,17 +178,12 @@ export function ResponseComposer({
     }
   }
 
-  // Close picker on mode switch
   useEffect(() => {
     setPickerOpen(false);
   }, [mode]);
 
-  // ─── AI-suggested replies ─────────────────────────────────────────
-  // Only fetched in "reply" mode. The first fetch happens automatically
-  // when the composer mounts (or the ticket changes); the operator can
-  // manually regenerate via the refresh button. We never auto-refetch on
-  // socket events — that would re-shuffle suggestions while the operator
-  // is mid-edit.
+  // AI suggestions fetch once on mount and on manual refresh — never on
+  // socket events, which would re-shuffle them while the operator is mid-edit.
   const [suggestions, setSuggestions] = useState<ReplySuggestion[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
 

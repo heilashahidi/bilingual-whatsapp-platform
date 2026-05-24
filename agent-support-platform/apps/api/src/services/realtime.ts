@@ -1,7 +1,6 @@
 import type { Server as HttpServer } from "node:http";
 import { Server as IOServer } from "socket.io";
 
-// Module-level singleton. Set once at server startup; emit from anywhere.
 let io: IOServer | null = null;
 
 export function initRealtime(httpServer: HttpServer): IOServer {

@@ -14,9 +14,8 @@ export async function getServerApiToken(): Promise<string | undefined> {
   const secret = process.env.NEXTAUTH_SECRET;
   if (!secret) return undefined;
 
-  // getToken needs Request-like args; in App Router we synthesize a minimal
-  // one from next/headers + next/cookies. The library only reads cookies
-  // and a few standard request headers.
+  // getToken expects Request-like args; synthesize one from next/headers +
+  // next/cookies since App Router has no req object.
   const cookieHeader = cookies()
     .getAll()
     .map((c) => `${c.name}=${c.value}`)

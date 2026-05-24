@@ -21,14 +21,10 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// ─── Middleware ──────────────────────────────────────────────
-
 // Twilio sends form-encoded data, so we need both parsers
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// ─── Health check ───────────────────────────────────────────
 
 app.get("/health", async (_req, res) => {
   try {
@@ -38,8 +34,6 @@ app.get("/health", async (_req, res) => {
     res.status(503).json({ status: "error", message: "Database unreachable" });
   }
 });
-
-// ─── Routes ─────────────────────────────────────────────────
 
 // Webhooks stay open — they use Twilio signature validation instead of JWT.
 app.use("/webhooks", webhookRouter);
@@ -53,8 +47,6 @@ app.use("/api/tickets", requireAuth, ticketRouter);
 app.use("/api/agents", requireAuth, agentRouter);
 app.use("/api/knowledge", requireAuth, knowledgeRouter);
 app.use("/api/incidents", requireAuth, incidentRouter);
-
-// ─── Start ──────────────────────────────────────────────────
 
 const httpServer = http.createServer(app);
 initRealtime(httpServer);

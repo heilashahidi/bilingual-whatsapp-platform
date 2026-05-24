@@ -3,15 +3,9 @@ import { prisma } from "../services/database";
 
 const router = Router();
 
-// ─── GET /api/agents ────────────────────────────────────────
-// List/search agents. Accepts ?q=<string> for fuzzy match across name,
-// phone, and branch name (powers the New Ticket modal picker).
-// Returns { agents: [...] } so the response shape matches the rest of
-// the API.
-
+// List/search agents. `q` fuzzy-matches across name, phone, and branch name.
 router.get("/", async (req: Request, res: Response) => {
   const { country, limit = "50", offset = "0" } = req.query;
-  // Accept both `q` (new modal) and `search` (older callers)
   const q = (req.query.q || req.query.search) as string | undefined;
 
   const where: any = {};
@@ -36,8 +30,6 @@ router.get("/", async (req: Request, res: Response) => {
 
   res.json({ agents });
 });
-
-// ─── GET /api/agents/:id ───────────────────────────────────
 
 router.get("/:id", async (req: Request, res: Response) => {
   const agent = await prisma.agent.findUnique({

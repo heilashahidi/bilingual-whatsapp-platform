@@ -1,10 +1,5 @@
 import { RawMessage } from "@asp/shared";
 
-// ─── Twilio WhatsApp Webhook Payload ────────────────────────
-// Twilio sends form-encoded data with these fields:
-//   MessageSid, From, To, Body, NumMedia, MediaUrl0, MediaContentType0,
-//   ProfileName, WaId (WhatsApp ID)
-
 interface TwilioWhatsAppPayload {
   MessageSid: string;
   From: string; // "whatsapp:+509XXXXXXXX"
@@ -28,10 +23,8 @@ export function normalizeInboundMessage(
   payload: TwilioWhatsAppPayload,
   serverReceivedAt: string
 ): RawMessage {
-  // Extract phone number from Twilio's "whatsapp:+509XXXXXXXX" format
   const agentPhone = payload.From.replace("whatsapp:", "");
 
-  // Determine content type from media
   const numMedia = parseInt(payload.NumMedia || "0", 10);
   let contentType: RawMessage["contentType"] = "text";
   let mediaUrl: string | null = null;
@@ -46,7 +39,6 @@ export function normalizeInboundMessage(
     mediaUrl = payload.MediaUrl0 || null;
   }
 
-  // Derive country code from phone number prefix
   const countryCode = deriveCountryCode(agentPhone);
 
   return {

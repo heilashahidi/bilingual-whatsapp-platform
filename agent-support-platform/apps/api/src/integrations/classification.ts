@@ -18,8 +18,6 @@ export async function classifyMessage(englishText: string): Promise<Classificati
   return classifyStub(englishText);
 }
 
-// ─── LLM classification (production) ────────────────────────
-
 const CLASSIFICATION_PROMPT = `You are a support ticket classifier for a fintech platform operating in Haiti, Dominican Republic, and DRC.
 
 The agent message below may be in English, Haitian Creole, French, or Spanish — classify based on meaning regardless of source language. If the language is unfamiliar or the meaning is ambiguous, lower your confidence score accordingly (the pipeline will re-classify on a translated copy when confidence < 0.7).
@@ -84,7 +82,6 @@ async function classifyWithLLM(text: string): Promise<ClassificationResult> {
   const content = data.content?.[0]?.text || "";
 
   try {
-    // Strip any markdown fences just in case
     const clean = content.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(clean);
     return {
@@ -101,8 +98,6 @@ async function classifyWithLLM(text: string): Promise<ClassificationResult> {
   }
 }
 
-// ─── Development stub ───────────────────────────────────────
-
 function classifyStub(text: string): ClassificationResult {
   const lower = text.toLowerCase();
   const result: ClassificationResult = {
@@ -114,7 +109,6 @@ function classifyStub(text: string): ClassificationResult {
     likelyNetwork: false,
   };
 
-  // Simple keyword matching for dev
   if (lower.includes("crash") || lower.includes("error") || lower.includes("bug") || lower.includes("broken")) {
     result.category = "bug_report";
     result.tags.push("app_crash");
@@ -139,7 +133,6 @@ function classifyStub(text: string): ClassificationResult {
     result.severity = "low";
   }
 
-  // Connectivity detection for Haiti/DRC
   if (lower.includes("internet") || lower.includes("connection") || lower.includes("network") ||
       lower.includes("loading") || lower.includes("timeout") || lower.includes("wifi") ||
       lower.includes("signal") || lower.includes("offline")) {
@@ -148,7 +141,6 @@ function classifyStub(text: string): ClassificationResult {
     result.productArea = "mobile_app";
   }
 
-  // Transaction keywords
   if (lower.includes("transaction") || lower.includes("payment") || lower.includes("money") || lower.includes("transfer")) {
     result.tags.push("transaction_failure");
     result.productArea = "payments";

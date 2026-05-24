@@ -16,17 +16,10 @@ interface TranslationResult {
   confidence: number;
 }
 
-// ─── In-memory translation cache ────────────────────────────
-// Same English phrase → same Spanish/Creole/French output. Canned
-// intake prompts, "Your ticket has been resolved", auto-acknowledgments,
-// and operator templates all hit repeatedly — caching cuts the
-// ~300-500ms Claude call to a Map lookup. Cache key is target+text
-// (source is auto-detected by Claude, so the result is target-keyed).
-//
-// LRU bound (1000 entries) keeps memory predictable in a long-running
-// process. Per-entry size dominated by the translated string, so worst
-// case ~2MB (1000 × 2KB messages). TTL avoids serving stale glossary
-// translations after a prompt change.
+// Canned intake prompts, "Your ticket has been resolved", auto-acks, and
+// operator templates all hit repeatedly — caching cuts the ~300–500ms
+// Claude call to a Map lookup. LRU + TTL keeps memory predictable and
+// avoids serving stale translations after a prompt change.
 const TRANSLATION_CACHE_MAX = 1000;
 const TRANSLATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
@@ -45,7 +38,7 @@ function cacheGet(text: string, targetLanguage: string): TranslationResult | nul
     translationCache.delete(key);
     return null;
   }
-  // LRU: re-insert to move to most-recent
+  // Re-insert to move to most-recent for LRU eviction order.
   translationCache.delete(key);
   translationCache.set(key, entry);
   return entry.result;
@@ -54,7 +47,7 @@ function cacheGet(text: string, targetLanguage: string): TranslationResult | nul
 function cacheSet(text: string, targetLanguage: string, result: TranslationResult): void {
   const key = cacheKey(text, targetLanguage);
   translationCache.set(key, { result, expiresAt: Date.now() + TRANSLATION_CACHE_TTL_MS });
-  // Evict oldest if over bound (Map preserves insertion order).
+  // Map preserves insertion order — first key is the oldest entry.
   if (translationCache.size > TRANSLATION_CACHE_MAX) {
     const oldest = translationCache.keys().next().value;
     if (oldest !== undefined) translationCache.delete(oldest);
@@ -78,8 +71,8 @@ async function translateCached(
     process.env.USE_REAL_TRANSLATION === "true"
       ? await translateWithClaude(text, targetLanguage)
       : await translateStub(text, targetLanguage);
-  // Only cache confident successes — a stub fallback or low-confidence
-  // result shouldn't poison future lookups.
+  // Don't cache stub fallback or low-confidence results — they'd poison
+  // future lookups.
   if (result.confidence >= 0.7) {
     cacheSet(text, targetLanguage, result);
   }
@@ -104,12 +97,8 @@ export async function translateResponse(
   return translateCached(text, targetLanguage);
 }
 
-// ─── Claude Haiku translation ───────────────────────────────
-// Pragmatic choice: zero new infra (we already use Claude for
-// classification), handles all 4 languages well, structured JSON
-// output. ~300–500 ms latency, ~$0.0001 per translation. For
-// production-grade quality + custom fintech glossaries, swap to
-// translateWithGoogle below.
+// Claude Haiku reuses infra we already have for classification, handles
+// all 4 languages, ~300–500 ms latency, ~$0.0001 per translation.
 
 const LANG_NAMES: Record<string, string> = {
   en: "English",
@@ -187,19 +176,16 @@ ${text}`;
   }
 }
 
-// ─── Development stub ───────────────────────────────────────
-
+// Dev fallback: pass through text untouched. Real translation requires
+// USE_REAL_TRANSLATION=true + an ANTHROPIC_API_KEY.
 async function translateStub(
   text: string,
   targetLanguage: string
 ): Promise<TranslationResult> {
-  // Simple language detection heuristic for dev
   const detectedLanguage = detectLanguageStub(text);
 
   console.log(`  [STUB] Translate: "${text.substring(0, 50)}..." (${detectedLanguage} → ${targetLanguage})`);
 
-  // In dev, just pass through the text untouched. Real translation requires
-  // USE_REAL_TRANSLATION=true + Google Cloud credentials.
   return {
     translatedText: text,
     detectedLanguage,
@@ -209,7 +195,6 @@ async function translateStub(
 
 function detectLanguageStub(text: string): string {
   const lower = text.toLowerCase();
-  // Very rough heuristic — just for dev
   if (lower.includes("mwen") || lower.includes("pou") || lower.includes("pa ka")) return "ht";
   if (lower.includes("por favor") || lower.includes("problema") || lower.includes("aplicación")) return "es";
   if (lower.includes("je ne") || lower.includes("s'il vous") || lower.includes("problème")) return "fr";

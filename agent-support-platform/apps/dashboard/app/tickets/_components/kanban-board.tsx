@@ -32,8 +32,6 @@ import { BulkActionsBar } from "./bulk-actions-bar";
 
 type KanbanStatus = Exclude<TicketStatus, "closed">;
 
-// Column accent — controls the small dot beside the column title and the
-// "drop zone" ring when a card hovers. Keep palettes muted so cards stand out.
 const COLUMNS: {
   status: KanbanStatus;
   label: string;
@@ -45,9 +43,6 @@ const COLUMNS: {
   { status: "waiting_on_agent", label: "Waiting on agent", dotClass: "bg-amber-500",   ringClass: "ring-amber-300/60 bg-amber-50/60" },
   { status: "resolved",         label: "Resolved",         dotClass: "bg-emerald-500", ringClass: "ring-emerald-300/60 bg-emerald-50/60" },
 ];
-
-// Severity styles imported from lib/severity-styles so every surface
-// (kanban, list, detail, incidents) uses the same colors.
 
 const COUNTRY_META: Record<Country, { label: string; langLabel: string }> = {
   HT: { label: "Haiti",              langLabel: "Kreyòl" },
@@ -66,8 +61,7 @@ export function KanbanBoard({
   density?: "comfortable" | "compact";
   bilingual?: boolean;
 }) {
-  // Local state shadows server props for optimistic drag-drop. Resyncs when
-  // server pushes new data (via realtime refresh).
+  // Shadow of server props for optimistic drag-drop; resyncs on realtime push.
   const [tickets, setTickets] = useState(serverTickets);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -371,12 +365,9 @@ function CardContent({
   dragging?: boolean;
 }) {
   const latest = ticket.messages[0];
-  // Direction-aware text picks. For inbound: translatedText is English,
-  // originalText is the agent's language. For outbound (operator reply
-  // or auto-intake): originalText is English, translatedText is the
-  // foreign version sent to the agent. Old code naively read
-  // translatedText, which showed FOREIGN text on tickets whose latest
-  // message was an operator reply — the bug the user kept seeing.
+  // Inbound: translatedText is English, originalText is the agent's language.
+  // Outbound (operator/auto-intake): originalText is English, translatedText
+  // is the foreign version actually sent.
   const isInboundLatest = latest?.direction === "inbound";
   const englishView = isInboundLatest
     ? latest?.translatedText || ""
@@ -408,10 +399,7 @@ function CardContent({
         <SlaTimer deadline={ticket.slaFirstResponseDeadline} />
       </div>
 
-      {/* Message snippet — single language at a time, controlled by
-          the bilingual toggle (see snippet computation above). Compact
-          mode skips the body entirely; the meta row above carries
-          severity/SLA at high density. */}
+      {/* Compact density skips the message body; severity + SLA still show above. */}
       {!isCompact && (
         <p
           dir={bilingual ? "auto" : undefined}
@@ -421,11 +409,6 @@ function CardContent({
         </p>
       )}
 
-      {/* Agent row — country code + name + branch + assignee. The country
-          abbrev replaces the prior dedicated meta row; ticket id, lang
-          code, connectivity dot, and tag chips were dropped to make
-          cards scan faster. All of that data is still on the detail
-          pane. */}
       <div className={`flex items-center gap-2 ${isCompact ? "mt-0" : "mt-2.5"}`}>
         <span
           title={`${country.label} · ${country.langLabel}`}
@@ -444,7 +427,6 @@ function CardContent({
         <AssigneeAvatar user={assignee} />
       </div>
 
-      {/* Incident grouping pill — shows cluster size when the API includes it. */}
       {ticket.incident && (
         <div className="mt-2 flex items-center gap-1.5 rounded-md border border-rose-200/70 bg-rose-50 px-2 py-1 text-[10.5px] font-medium text-rose-700">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
@@ -459,9 +441,8 @@ function CardContent({
         </div>
       )}
 
-      {/* Resolution summary — shows on resolved/closed cards so triage can
-          clear a cluster at a glance ("Pushed hotfix 2.4.1 — 14 cards all
-          resolved by same fix"). */}
+      {/* Resolution summary surfaces on resolved/closed cards so triage can
+          clear a whole cluster at a glance. */}
       {(ticket.status === "resolved" || ticket.status === "closed") &&
         ticket.resolutionSummary && (
           <div className="mt-2 flex items-start gap-1.5 rounded-md bg-emerald-50 px-2 py-1 text-[10.5px] leading-snug text-emerald-700 ring-1 ring-inset ring-emerald-200/70">
@@ -490,8 +471,7 @@ function AssigneeAvatar({ user }: { user: InternalUser | null }) {
     );
   }
   const initials = user.name.split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
-  // Derive a stable hue from the user id so avatars stay distinct without a
-  // hand-maintained color table.
+  // Stable hue from user id keeps avatars distinct without a color table.
   const hue = [...user.id].reduce((n, c) => n + c.charCodeAt(0), 0) % 360;
   return (
     <span
