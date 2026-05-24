@@ -34,25 +34,10 @@ export default async function TicketsPage() {
     );
   }
 
-  // Status breakdown for the PageHeader — count per status so the
-  // header can render "12 open · 3 in progress · 1 waiting · 7 resolved"
-  // instead of a single total-all-ever number.
-  const statusCounts = data.tickets.reduce(
-    (acc, t) => {
-      acc[t.status] = (acc[t.status] ?? 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>
-  );
-
   return (
     <>
       <RealtimeRefresh />
-      <TicketsShell
-        tickets={data.tickets}
-        users={users}
-        statusCounts={statusCounts}
-      />
+      <TicketsShell tickets={data.tickets} users={users} />
     </>
   );
 }

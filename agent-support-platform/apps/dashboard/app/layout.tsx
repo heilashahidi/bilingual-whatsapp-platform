@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   // Deploy marker — used as a sanity check that Railway is actually
   // rebuilding the dashboard on push. Bump if you suspect the deploy
   // is stuck on a stale image.
-  other: { "x-app-build": "2026-05-23-status-chips" },
+  other: { "x-app-build": "2026-05-23-no-status-chips" },
 };
 
 export default function RootLayout({

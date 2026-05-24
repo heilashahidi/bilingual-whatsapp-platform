@@ -1,95 +1,25 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
-import type { TicketStatus } from "@/lib/types";
 import type { UiPrefs } from "@/lib/ui-prefs";
 
 // Header row that sits between the page title and the FiltersBar.
 // Owns: view toggle (kanban/list), density toggle, bilingual toggle,
 // New ticket button. All state passes through props — the shell owns it.
 
-export type StatusCounts = Partial<Record<TicketStatus, number>>;
-
-// Status filter chips. Order matches the operator's flow: incoming →
-// triaged → waiting → done. Each chip toggles ?status=<key> on the URL,
-// which all three views (inbox / kanban / list) read. Closed is
-// archive, not queue, so it's not surfaced.
-const STATUS_CHIPS: { key: TicketStatus; label: string; tone: string }[] = [
-  { key: "open",             label: "Open",        tone: "bg-sky-50 text-sky-700 ring-sky-200" },
-  { key: "in_progress",      label: "In progress", tone: "bg-violet-50 text-violet-700 ring-violet-200" },
-  { key: "waiting_on_agent", label: "Waiting",     tone: "bg-amber-50 text-amber-700 ring-amber-200" },
-  { key: "resolved",         label: "Resolved",    tone: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
-];
-
 export function PageHeader({
   prefs,
   onPrefsChange,
   onNewTicket,
-  statusCounts,
 }: {
   prefs: UiPrefs;
   onPrefsChange: (patch: Partial<UiPrefs>) => void;
   onNewTicket: () => void;
-  statusCounts?: StatusCounts;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const activeStatus = searchParams.get("status") as TicketStatus | null;
-
-  const setStatus = useMemo(
-    () => (next: TicketStatus | null) => {
-      const p = new URLSearchParams(searchParams.toString());
-      if (!next || next === activeStatus) p.delete("status");
-      else p.set("status", next);
-      const qs = p.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-    },
-    [router, pathname, searchParams, activeStatus]
-  );
-
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-          Tickets
-        </h1>
-        {statusCounts && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            {STATUS_CHIPS.map((s) => {
-              const count = statusCounts[s.key] ?? 0;
-              if (count === 0 && activeStatus !== s.key) return null;
-              const active = activeStatus === s.key;
-              return (
-                <button
-                  key={s.key}
-                  type="button"
-                  onClick={() => setStatus(s.key)}
-                  aria-pressed={active}
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset transition ${
-                    active
-                      ? s.tone
-                      : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50 hover:text-slate-900"
-                  }`}
-                >
-                  {s.label}
-                  <span className="font-mono tabular-nums opacity-80">{count}</span>
-                </button>
-              );
-            })}
-            {activeStatus && (
-              <button
-                type="button"
-                onClick={() => setStatus(null)}
-                className="text-[11px] text-slate-500 hover:text-slate-900"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+        Tickets
+      </h1>
 
       <div className="flex items-center gap-2">
         {/* View toggle — inbox (Front-style three-pane) / kanban / list */}
