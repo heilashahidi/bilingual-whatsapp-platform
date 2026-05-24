@@ -7,7 +7,9 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "eval": "braintrust eval evals",
+    "eval:offline": "braintrust eval --no-send-logs evals"
   },
   "dependencies": {
     "@asp/shared": "workspace:*",
@@ -28,6 +30,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.5.0",
     "@types/supertest": "^7.2.0",
+    "braintrust": "^3.11.0",
     "prisma": "^5.20.0",
     "supertest": "^7.2.2",
     "tsx": "^4.19.0",
