@@ -9,7 +9,7 @@ import { TicketDetailView } from "./_components/ticket-detail";
 export const dynamic = "force-dynamic";
 
 // Dynamic browser tab title — shows the ticket's first inbound message
-// (truncated) instead of the static "Nclusion". Helps operators
+// (truncated) instead of the static "Nclusion Field Agent Support". Helps operators
 // distinguish multiple ticket tabs at a glance.
 export async function generateMetadata({
   params,
@@ -26,9 +26,9 @@ export async function generateMetadata({
       .replace(/\s+/g, " ")
       .trim();
     const short = snippet.length > 60 ? snippet.slice(0, 57) + "…" : snippet;
-    return { title: `${short} · #${ticket.id.slice(0, 8)} · Nclusion` };
+    return { title: `${short} · #${ticket.id.slice(0, 8)} · Nclusion Field Agent Support` };
   } catch {
-    return { title: "Ticket · Nclusion" };
+    return { title: "Ticket · Nclusion Field Agent Support" };
   }
 }
 

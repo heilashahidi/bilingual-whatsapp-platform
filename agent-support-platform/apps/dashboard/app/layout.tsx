@@ -10,12 +10,12 @@ import { UserMenu } from "./_components/user-menu";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Nclusion",
+  title: "Nclusion Field Agent Support",
   description: "Bilingual WhatsApp support inbox",
   // Deploy marker — used as a sanity check that Railway is actually
   // rebuilding the dashboard on push. Bump if you suspect the deploy
   // is stuck on a stale image.
-  other: { "x-app-build": "2026-05-23-nclusion-rebrand" },
+  other: { "x-app-build": "2026-05-23-nclusion-field-agent-support" },
 };
 
 export default function RootLayout({
@@ -31,7 +31,7 @@ export default function RootLayout({
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
               <div className="flex items-center gap-6">
                 <Link href="/" className="text-lg font-semibold tracking-tight">
-                  Nclusion
+                  Nclusion Field Agent Support
                 </Link>
                 <nav className="flex gap-6 text-sm text-slate-600">
                   <TicketsNavLink />

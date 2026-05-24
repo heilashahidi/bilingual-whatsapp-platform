@@ -31,7 +31,7 @@ function SignInContent() {
     <div className="flex min-h-[70vh] items-center justify-center">
       <div className="w-full max-w-sm space-y-6 rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
         <div className="text-center">
-          <h1 className="text-xl font-semibold">Nclusion</h1>
+          <h1 className="text-xl font-semibold">Nclusion Field Agent Support</h1>
           <p className="mt-1 text-sm text-slate-500">
             Sign in with your work Google account
           </p>
