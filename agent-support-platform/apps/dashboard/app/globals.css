@@ -55,8 +55,9 @@ body {
 .drawer        { animation: slide-in-right 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
 .drawer-scrim  { animation: fade-in 180ms ease-out; }
 
-/* With the drawer's scrim now transparent, the dashboard behind is
-   visible — we just hide the site nav so the top of the page reads
-   as the dashboard content, not as browser chrome. Main stays
-   visible. Toggled by ticket-drawer.tsx via document.body.dataset.drawerOpen. */
-body[data-drawer-open] > header { visibility: hidden; }
+/* (No drawer-open CSS rules at the moment — scrim is transparent
+   and the frosted-glass panel sits on top, so the dashboard +
+   site-nav underneath are free to render normally. The body still
+   gets data-drawer-open from ticket-drawer.tsx via the scroll-lock
+   effect; left in place for future use if we need to hide anything
+   under the drawer again.) */
