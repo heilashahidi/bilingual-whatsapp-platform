@@ -8,6 +8,7 @@ A real-time support bridge from Nclusion connecting 1,000+ field agents across H
 |---|---|
 | API | <https://nclusion-api.up.railway.app> |
 | Dashboard | <https://nclusion-inbox-production.up.railway.app> |
+| **Project overview** (single-page, plain-English tour of the system) | <https://heilashahidi.github.io/bilingual-whatsapp-platform/PROJECT_OVERVIEW.html> |
 
 ## The Problem
 
