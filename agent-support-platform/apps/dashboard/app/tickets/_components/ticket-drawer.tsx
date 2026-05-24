@@ -132,13 +132,14 @@ export function TicketDrawer() {
       aria-modal="true"
       aria-label="Ticket details"
     >
-      {/* Scrim — click to close. backdrop-blur de-emphasizes the rest
-          of the dashboard so the operator's eye lands on the ticket. */}
+      {/* Scrim — fully transparent. Still clickable to close the
+          drawer (covers the left half of the viewport), but lets the
+          dashboard underneath show through clean and crisp. */}
       <button
         type="button"
         aria-label="Close ticket"
         onClick={close}
-        className="drawer-scrim flex-1 cursor-default bg-slate-900/60 backdrop-blur-md"
+        className="drawer-scrim flex-1 cursor-default bg-transparent"
       />
 
       {/* Panel — no header strip. Close + "open full" controls float

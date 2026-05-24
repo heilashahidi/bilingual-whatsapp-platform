@@ -55,11 +55,8 @@ body {
 .drawer        { animation: slide-in-right 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
 .drawer-scrim  { animation: fade-in 180ms ease-out; }
 
-/* When the ticket drawer is open, hide the entire dashboard chrome
-   underneath it. The drawer is portaled to document.body (see
-   ticket-drawer.tsx), so hiding the site nav + main doesn't affect
-   the drawer itself. Eliminates every possible source of a "bar at
-   the top" by simply having nothing rendered behind the scrim.
-   Toggled by ticket-drawer.tsx via document.body.dataset.drawerOpen. */
-body[data-drawer-open] > header,
-body[data-drawer-open] > main { visibility: hidden; }
+/* With the drawer's scrim now transparent, the dashboard behind is
+   visible — we just hide the site nav so the top of the page reads
+   as the dashboard content, not as browser chrome. Main stays
+   visible. Toggled by ticket-drawer.tsx via document.body.dataset.drawerOpen. */
+body[data-drawer-open] > header { visibility: hidden; }
