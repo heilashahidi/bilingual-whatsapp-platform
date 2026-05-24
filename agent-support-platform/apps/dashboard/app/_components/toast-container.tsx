@@ -39,33 +39,24 @@ export function ToastContainer() {
     const socket = getSocket();
 
     const handler = async (event: TicketChangedEvent) => {
-      // We toast on two kinds:
-      //   created → brand-new conversation, brand-new ticket
-      //   message → new inbound message appended to an existing ticket
-      // The third kind (updated — status/assignment change) is too noisy
-      // for a popup and is already surfaced by RealtimeRefresh +
-      // DetailPane re-fetch.
+      // Toast on new tickets and new inbound messages. "updated" events
+      // (status/assignment) are too noisy and already covered by RealtimeRefresh.
       if (event.kind !== "created" && event.kind !== "message") return;
 
       try {
         const ticket = await fetchTicket(event.ticketId);
-        // "message" events also fire for outbound replies the operator
-        // just sent — they don't need a toast for their own message
-        // (they typed it). Filter: only toast when the most-recent
-        // message is INBOUND.
+        // Skip outbound replies — the operator just typed them; no toast needed.
         if (event.kind === "message") {
           const latest = ticket.messages[ticket.messages.length - 1];
           if (latest?.direction !== "inbound") return;
         }
         const id = `${event.ticketId}-${Date.now()}`;
         setToasts((prev) => [...prev, { id, ticket, kind: event.kind as "created" | "message" }]);
-        // Auto-dismiss
         window.setTimeout(() => {
           setToasts((prev) => prev.filter((t) => t.id !== id));
         }, TOAST_TIMEOUT_MS);
       } catch (err) {
-        // Drop the toast silently — better than an unwanted error
-        // popup — but log so a fetch outage is diagnosable in devtools.
+        // Drop toast silently, but log so a fetch outage is diagnosable.
         console.error("toast-container: fetchTicket failed", err);
       }
     };
@@ -101,10 +92,8 @@ function ToastCard({
   kind: "created" | "message";
   onDismiss: () => void;
 }) {
-  // For "created" the ticket has one message (the inbound that just
-  // created it). For "message" we want the most recent one, which
-  // sits at the END of the chronological messages array returned by
-  // GET /api/tickets/:id (orderBy createdAt asc).
+  // GET /api/tickets/:id returns messages chronologically (asc); the latest
+  // is at the END for message events, the only one for created events.
   const latest =
     kind === "message"
       ? ticket.messages[ticket.messages.length - 1]

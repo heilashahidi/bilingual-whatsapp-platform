@@ -4,8 +4,8 @@ import type { AuditAction } from "@asp/shared";
 
 export type { AuditAction };
 
-// One small helper called from every mutation route. Fires and forgets:
-// if the audit insert fails, the underlying mutation still succeeds.
+// Fire-and-forget: if the audit insert fails, the underlying mutation
+// still succeeds.
 
 export function recordEvent(input: {
   ticketId: string;

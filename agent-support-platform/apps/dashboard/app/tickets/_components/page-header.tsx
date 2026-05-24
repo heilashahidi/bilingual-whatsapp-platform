@@ -123,10 +123,6 @@ export function PageHeader({
   );
 }
 
-// ── Segmented control ────────────────────────────────────────────────
-// 2-option icon/label switch. Icon-only by default, with the label shown
-// in a tooltip; if we ever need >2 options, swap for a Radix Toggle Group.
-
 function Segmented<T extends string>({
   ariaLabel,
   value,

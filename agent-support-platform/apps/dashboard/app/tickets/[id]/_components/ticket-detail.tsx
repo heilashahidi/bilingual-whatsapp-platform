@@ -16,10 +16,7 @@ import { ResponseComposer } from "../response-composer";
 import { TicketActions } from "../ticket-actions";
 import { SlaTimer } from "../../_components/sla-timer";
 
-// Renderable detail view, used in BOTH the full /tickets/[id] route AND
-// the drawer that opens from the kanban. Everything client-side — the
-// data is passed in as props by whichever surface is hosting it.
-
+// Used by both the full /tickets/[id] route and the kanban drawer.
 const statusStyles: Record<TicketStatus, string> = {
   open: "bg-sky-100 text-sky-800",
   in_progress: "bg-violet-100 text-violet-800",
@@ -52,8 +49,6 @@ function senderLabel(m: Message): string {
 function DeliveryStatus({ message }: { message: Message }) {
   if (message.direction !== "outbound") return null;
 
-  // Pending: queued for Twilio send. Inline spinner so the operator
-  // can see at a glance which messages are still in flight.
   if (message.deliveryStatus === "pending") {
     return (
       <span
@@ -66,10 +61,8 @@ function DeliveryStatus({ message }: { message: Message }) {
     );
   }
 
-  // Failed: surface the reason. Without this the operator has no
-  // signal that the message didn't actually reach the field agent —
-  // exactly the silent-failure case the queue + retry was meant to
-  // protect against (a single failed Twilio leg used to vanish).
+  // Surface the failure reason — without this a failed Twilio leg vanishes
+  // silently from the operator's view.
   if (message.deliveryStatus === "failed") {
     return (
       <span
@@ -100,10 +93,8 @@ function DeliveryStatus({ message }: { message: Message }) {
   );
 }
 
-// Tokenize a note body so that @FullName segments render as bold pills.
-// Matches "@" followed by capitalized words separated by single spaces,
-// up to 3 words deep (covers "@Jean", "@Jean-Baptiste Pierre", "@Maria
-// Carmen Diaz"). Conservative on purpose — false matches are minor.
+// Matches @Name up to 3 words deep (e.g. @Jean-Baptiste Pierre). Intentionally
+// conservative — false matches are minor.
 function renderWithMentions(text: string): React.ReactNode[] {
   const pattern = /@[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}/g;
   const out: React.ReactNode[] = [];
@@ -154,12 +145,8 @@ function NoteBubble({ note }: { note: Note }) {
 function MessageBubble({ message }: { message: Message }) {
   const [prefs] = useUiPrefs();
   const isInbound = message.direction === "inbound";
-  // Single language at a time. Default (bilingual OFF) shows the
-  // English version for every message — inbound translatedText,
-  // outbound operator-typed originalText. Bilingual ON swaps each
-  // bubble to the field-agent's language — inbound originalText,
-  // outbound the auto-translated version we actually sent over
-  // WhatsApp.
+  // Inbound: translatedText is English, originalText is agent language.
+  // Outbound: originalText is English, translatedText is what was sent.
   const englishView = isInbound
     ? message.translatedText
     : message.originalText;
@@ -170,18 +157,13 @@ function MessageBubble({ message }: { message: Message }) {
     ? agentView || englishView
     : englishView || agentView;
   const showSecondary = false;
-  // Keep `secondary` defined so the JSX block below stays valid; it
-  // never renders because showSecondary is now always false.
   const secondary: string | null = null;
   const lowConfidence =
     isInbound &&
     typeof message.translationConfidence === "number" &&
     message.translationConfidence < 0.7;
-  // System messages are auto-sent by the platform (e.g., the
-  // category-aware intake checklist on new tickets). Render them
-  // with a slightly different palette + a small badge so operators
-  // can tell at a glance which messages they sent vs which the
-  // platform sent on their behalf.
+  // Auto-sent by the platform (e.g. category-aware intake checklist).
+  // Renders with a distinct palette + badge so operators can tell.
   const isSystem = !isInbound && message.senderType === "system";
 
   return (
@@ -284,12 +266,9 @@ export function TicketDetailView({
     ? formatRelative(ticket.resolvedAt)
     : null;
 
-  // ─── Conversation auto-scroll ──────────────────────────────────────
-  // The conversation block is scrollable on its own (max-h + overflow).
-  // On mount, jump straight to the latest message. On subsequent
-  // updates (new inbound message via realtime, operator sends a reply),
-  // only auto-scroll if the user was already near the bottom — otherwise
-  // we'd yank them away from older history they're reading.
+  // On mount, jump to the latest message. On updates, only auto-scroll if the
+  // user was already near the bottom — otherwise we'd yank them off history
+  // they're reading.
   const conversationRef = useRef<HTMLDivElement | null>(null);
   const wasAtBottomRef = useRef(true);
   const itemCount = ticket.messages.length + ticket.notes.length;
@@ -305,8 +284,7 @@ export function TicketDetailView({
   function handleConversationScroll() {
     const el = conversationRef.current;
     if (!el) return;
-    // Within 64px of the bottom counts as "near bottom" for the
-    // auto-scroll decision on the NEXT update.
+    // Within 64px counts as "near bottom" for the next update's decision.
     wasAtBottomRef.current =
       el.scrollHeight - el.scrollTop - el.clientHeight < 64;
   }
@@ -383,8 +361,6 @@ export function TicketDetailView({
                   ` · ${ticket.notes.length} note${ticket.notes.length === 1 ? "" : "s"}`}
               </span>
             </div>
-            {/* Scrollable bubble region. max-h scales with viewport so the
-                composer below stays in view on tall threads. */}
             <div
               ref={conversationRef}
               onScroll={handleConversationScroll}

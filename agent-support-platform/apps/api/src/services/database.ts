@@ -1,7 +1,5 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 
-// ─── Transient-error retry ────────────────────────────────────────────
-//
 // Neon's free tier auto-suspends the compute after ~5 minutes of idle.
 // The first request after suspension fails with PG SqlState E57P01
 // ("terminating connection due to administrator command") or one of
@@ -56,8 +54,6 @@ export async function withPrismaRetry<T>(
   }
 }
 
-// ─── Wrapped Prisma client ────────────────────────────────────────────
-//
 // $extends wraps every model operation (findMany, create, update, …)
 // in our retry helper. Operations on the $-namespace ($queryRaw,
 // $transaction, $disconnect) are NOT auto-wrapped — they bypass the

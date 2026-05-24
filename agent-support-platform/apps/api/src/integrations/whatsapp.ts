@@ -67,14 +67,12 @@ export async function sendWhatsAppMessage(
     body,
   };
 
-  // Status callback URL for delivery receipts
   if (options?.statusCallback) {
     messageParams.statusCallback = options.statusCallback;
   } else if (process.env.WEBHOOK_BASE_URL) {
     messageParams.statusCallback = `${process.env.WEBHOOK_BASE_URL}/webhooks/whatsapp/status`;
   }
 
-  // Media — skip for Haiti/DRC (handled by caller)
   if (options?.mediaUrl) {
     messageParams.mediaUrl = [options.mediaUrl];
   }
@@ -107,15 +105,13 @@ export async function sendAgentResponse(
   let translatedText = englishText;
 
   if (agentLanguage && agentLanguage !== "en") {
-    // Translate to agent's language
     const translation = await translateResponse(englishText, agentLanguage);
     translatedText = translation.translatedText;
   }
 
-  // Enforce message length limits for low-bandwidth countries
+  // Per-country length cap for 2G / low-bandwidth links.
   const maxLength = BOT_MAX_MESSAGE_LENGTH[agentCountry] || 2000;
   if (translatedText.length > maxLength) {
-    // Truncate and add continuation note
     translatedText = translatedText.substring(0, maxLength - 50) + "\n\n[Reply MORE for the rest]";
   }
 

@@ -3,16 +3,8 @@
 import { useEffect, useState } from "react";
 import { getSocket } from "@/lib/socket";
 
-// Small badge in the top nav showing whether the dashboard's Socket.IO
-// connection to the API is live. Without it, a dropped connection
-// (API restart, machine idle, network blip) silently stops realtime
-// updates — the operator has no idea new tickets aren't arriving.
-//
-// States:
-//   • green dot · "Live"          — socket.connected === true
-//   • amber dot · "Reconnecting…" — socket.connected === false, attempts ongoing
-//   • red dot · "Offline"         — initial connect never succeeded after a few tries
-
+// Nav-bar badge for the Socket.IO connection. Without it, a dropped
+// connection silently stops realtime updates with no operator signal.
 type ConnState = "live" | "reconnecting" | "offline";
 
 export function RealtimeIndicator() {
@@ -21,10 +13,7 @@ export function RealtimeIndicator() {
   useEffect(() => {
     const socket = getSocket();
 
-    // socket.io-client emits various events; we collapse them into our
-    // three UI states. `connect` and `disconnect` are the two reliable
-    // signals; `reconnect_failed` lets us flip to a hard "offline"
-    // state when the client gives up.
+    // `reconnect_failed` flips us to hard offline when the client gives up.
     const onConnect = () => setState("live");
     const onDisconnect = () => setState("reconnecting");
     const onReconnectFailed = () => setState("offline");
@@ -35,8 +24,7 @@ export function RealtimeIndicator() {
     socket.io.on("reconnect", onConnect);
     socket.io.on("reconnect_attempt", () => setState("reconnecting"));
 
-    // Sync to current connection state on mount in case the events
-    // already fired before this component subscribed.
+    // Sync in case events already fired before we subscribed.
     setState(socket.connected ? "live" : "reconnecting");
 
     return () => {

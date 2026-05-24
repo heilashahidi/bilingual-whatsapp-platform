@@ -4,9 +4,6 @@ import { requireRole } from "../middleware/auth";
 
 const router = Router();
 
-// ─── GET /api/knowledge ─────────────────────────────────────
-// List knowledge articles. Filterable by ?status=(draft|active|archived).
-
 router.get("/", async (req: Request, res: Response) => {
   const { status } = req.query;
 
@@ -39,8 +36,6 @@ router.get("/", async (req: Request, res: Response) => {
   res.json({ articles });
 });
 
-// ─── GET /api/knowledge/:id ────────────────────────────────
-
 router.get("/:id", async (req: Request, res: Response) => {
   const article = await prisma.knowledgeArticle.findUnique({
     where: { id: req.params.id },
@@ -49,12 +44,9 @@ router.get("/:id", async (req: Request, res: Response) => {
   res.json(article);
 });
 
-// ─── PATCH /api/knowledge/:id ──────────────────────────────
-// Edit a draft or active article. Restricted to admin / operations /
-// engineering — editing KB content shapes what every operator sees, so
-// it shouldn't be open to every signed-in user (approval is the
-// support lead's job; editing is content stewardship).
-
+// Editing KB content shapes what every operator sees, so restrict to
+// admin/operations/engineering. Approval (separate route) is the support
+// lead's job.
 router.patch("/:id", requireRole("admin", "operations", "engineering"), async (req: Request, res: Response) => {
   const { title, problemDescription, resolutionText, tags, category, productArea } =
     req.body;
@@ -79,9 +71,6 @@ router.patch("/:id", requireRole("admin", "operations", "engineering"), async (r
   res.json(article);
 });
 
-// ─── POST /api/knowledge/:id/approve ───────────────────────
-// Promote a draft to active. Only admins or support leads.
-
 router.post(
   "/:id/approve",
   requireRole("admin", "support", "operations"),
@@ -93,9 +82,6 @@ router.post(
     res.json(article);
   }
 );
-
-// ─── POST /api/knowledge/:id/archive ───────────────────────
-// Take a (likely stale) article out of circulation.
 
 router.post(
   "/:id/archive",

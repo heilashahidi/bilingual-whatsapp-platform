@@ -15,14 +15,8 @@ import { NewTicketModal } from "./new-ticket-modal";
 import { PageHeader } from "./page-header";
 import { TicketDrawer } from "./ticket-drawer";
 
-// Front-style shell. Default view is the three-pane inbox layout
-// (sidebar · conversation list · persistent detail). Kanban and list
-// remain as alternate views — they keep their slide-in drawer for the
-// detail since they're full-width.
-//
-// page.tsx stays a server component — it fetches tickets/users and
-// hands them down; everything stateful or interactive lives here.
-
+// Three-pane inbox shell (sidebar · conversation list · detail). Kanban and
+// list views render full-width and use the slide-in drawer for detail.
 export function TicketsShell({
   tickets,
   users,
@@ -35,36 +29,23 @@ export function TicketsShell({
   const searchParams = useSearchParams();
   const pathname = usePathname();
 
-  // ?closed=1 turns the archived-ticket filter off. The toggle is wired
-  // by the IncidentClusterClosedBanner below — when an incident's cluster
-  // is fully closed the user has no other way to inspect it from the
-  // tickets surface.
+  // ?closed=1 reveals archived tickets (driven by the cluster-closed banner).
   const includeClosed = searchParams.get("closed") === "1";
 
-  // Closed tickets are archived — they don't show in any of the three
-  // views by default. ?closed=1 overrides this for archive inspection.
-  // ?status=<key> further narrows to a single status, driven by the
-  // status chips in PageHeader.
+  // ?status=<key> narrows to a single status (driven by PageHeader chips).
   const statusFilter = searchParams.get("status");
   const visible = (includeClosed
     ? tickets
     : tickets.filter((t) => t.status !== "closed")
   ).filter((t) => !statusFilter || t.status === statusFilter);
 
-  // When the user is intentionally inspecting closed tickets, kanban has
-  // no Closed column to render them in — force the list view so they're
-  // actually visible. The prefs.view choice still persists.
+  // Kanban has no Closed column, so force list view when inspecting closed.
   const effectiveView = includeClosed ? "list" : prefs.view;
   const isInbox = effectiveView === "inbox";
-  // Whether the right pane should occupy the small-screen view. Drives
-  // the single-pane toggle on mobile: no selection → conversation list,
-  // selection → detail pane (with a back button to clear).
   const hasSelection = searchParams.get("ticket") !== null;
 
-  // Detect: the URL has ?incident=X, the cluster has members, but every
-  // visible member was filtered out by the closed-ticket rule. We surface
-  // this with a banner instead of showing an empty board, so the user
-  // doesn't think the link is broken.
+  // ?incident=X with no visible members → all were filtered by the
+  // closed-ticket rule. Surface a banner so the deep link doesn't look broken.
   const incidentId = searchParams.get("incident");
   const incidentClusterInfo = useMemo(() => {
     if (!incidentId) return null;
@@ -84,7 +65,6 @@ export function TicketsShell({
     };
   }, [incidentId, includeClosed, tickets, visible]);
 
-  // Same URL with ?closed=1 added — drives the "Show closed" button.
   const showClosedHref = useMemo(() => {
     const next = new URLSearchParams(Array.from(searchParams.entries()));
     next.set("closed", "1");
@@ -222,12 +202,8 @@ export function TicketsShell({
         </div>
       )}
 
-      {/* Kanban + List: inbox sidebar hidden on small screens too,
-          freeing the full width for the board / list. The slide-in
-          drawer still mounts so clicking a card opens the detail. */}
       {!isInbox && (
         <div className="flex h-[calc(100vh-16rem)] min-h-[32rem] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          {/* Same toggleable InboxSidebar as the inbox view */}
           <div
             className={`hidden shrink-0 overflow-hidden transition-[width,opacity] duration-200 lg:block ${
               prefs.sidebarOpen ? "w-56 opacity-100" : "w-0 opacity-0"
@@ -236,9 +212,6 @@ export function TicketsShell({
           >
             <InboxSidebar tickets={visible} />
           </div>
-          {/* Hamburger toggle sits in a thin column to the left of the
-              kanban/list content so users can collapse the sidebar here
-              too without leaving their preferred view. */}
           <div className="hidden shrink-0 items-start border-r border-slate-200 bg-slate-50/40 p-1.5 lg:flex">
             <button
               type="button"
@@ -289,10 +262,8 @@ export function TicketsShell({
 
       {newOpen && <NewTicketModal onClose={() => setNewOpen(false)} />}
 
-      {/* Slide-in drawer mounts everywhere — the inbox view's right
-          column shows the empty-state placeholder, and selecting a
-          ticket opens the drawer as a full-viewport overlay with a
-          blurred scrim. Unified behavior across inbox / kanban / list. */}
+      {/* Drawer mounts in every view — inbox shows the empty-state pane
+          when nothing is selected, kanban/list rely on it for detail. */}
       <TicketDrawer />
     </div>
   );

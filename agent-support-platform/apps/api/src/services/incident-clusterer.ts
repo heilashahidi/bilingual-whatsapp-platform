@@ -3,7 +3,6 @@ import { recordEvent } from "./audit";
 import { emitTicketEvent } from "./realtime";
 import { summarizeIncident } from "./incident-summarizer";
 
-// ─── Tunables ───────────────────────────────────────────────────────────
 // A window of 30 minutes with a 3-ticket threshold lights up the same kind
 // of pattern an oncall would notice manually: a handful of branches in the
 // same country reporting the same category back-to-back. Easy to tweak
@@ -38,14 +37,14 @@ export async function clusterTicket(ticketId: string): Promise<string | null> {
     include: { agent: { include: { branch: true } } },
   });
   if (!ticket) return null;
-  if (ticket.incidentId) return ticket.incidentId; // already clustered
+  if (ticket.incidentId) return ticket.incidentId;
   if (ticket.deletedAt) return null;
 
   const country = ticket.agent.country;
   const category = ticket.category;
   const now = new Date();
 
-  // ─── Path 1: attach to an already-open incident ─────────────────────
+  // Path 1: attach to an already-open incident.
   const activeCutoff = new Date(now.getTime() - INCIDENT_ACTIVE_HOURS * 3600_000);
   const openIncident = await prisma.incident.findFirst({
     where: {
@@ -71,7 +70,7 @@ export async function clusterTicket(ticketId: string): Promise<string | null> {
     return openIncident.id;
   }
 
-  // ─── Path 2: threshold check on recent un-clustered tickets ─────────
+  // Path 2: threshold check on recent un-clustered tickets.
   const windowStart = new Date(now.getTime() - CLUSTER_WINDOW_MINUTES * 60_000);
   const candidates = await prisma.ticket.findMany({
     where: {
@@ -86,7 +85,6 @@ export async function clusterTicket(ticketId: string): Promise<string | null> {
 
   if (candidates.length < CLUSTER_THRESHOLD) return null;
 
-  // ─── Form a new incident ────────────────────────────────────────────
   const maxSeverity = candidates.reduce<Severity>((acc, t) => {
     const s = t.severity as Severity;
     return SEVERITY_RANK[s] > SEVERITY_RANK[acc] ? s : acc;

@@ -4,7 +4,6 @@ import type { TicketEventKind } from "@asp/shared";
 
 export type { TicketEventKind };
 
-// Module-level singleton. Set once at server startup; emit from anywhere.
 let io: IOServer | null = null;
 
 export function initRealtime(httpServer: HttpServer): IOServer {

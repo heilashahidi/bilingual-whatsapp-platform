@@ -5,7 +5,6 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("Seeding database...");
 
-  // ─── Branches ──────────────────────────────────────────────
   const branches = await Promise.all([
     prisma.branch.create({
       data: { name: "Port-au-Prince Central", country: "HT", region: "ouest", latitude: 18.5944, longitude: -72.3074 },
@@ -29,7 +28,6 @@ async function main() {
 
   console.log(`✓ Created ${branches.length} branches`);
 
-  // ─── Test Agents ───────────────────────────────────────────
   const agents = await Promise.all([
     prisma.agent.create({
       data: {
@@ -71,7 +69,6 @@ async function main() {
 
   console.log(`✓ Created ${agents.length} test agents`);
 
-  // ─── Internal Users ────────────────────────────────────────
   const users = await Promise.all([
     prisma.internalUser.create({
       data: {
@@ -98,7 +95,6 @@ async function main() {
 
   console.log(`✓ Created ${users.length} internal users`);
 
-  // ─── Sample Tickets ────────────────────────────────────────
   const now = Date.now();
   const minsAgo = (m: number) => new Date(now - m * 60 * 1000);
   const minsAhead = (m: number) => new Date(now + m * 60 * 1000);

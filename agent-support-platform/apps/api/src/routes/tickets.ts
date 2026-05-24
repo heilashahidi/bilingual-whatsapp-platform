@@ -12,9 +12,6 @@ import { requireRole } from "../middleware/auth";
 
 const router = Router();
 
-// ─── GET /api/tickets ───────────────────────────────────────
-// List tickets with filters, sorted by severity then SLA deadline
-
 // Pagination bounds. limit max 200 keeps a single response under ~2MB
 // for the typical ticket payload, while accommodating the dashboard's
 // single-page fetch of all visible tickets. Offset is unbounded above
@@ -133,9 +130,6 @@ router.get("/", async (req: Request, res: Response) => {
   res.json({ tickets: mapped, total });
 });
 
-// ─── GET /api/tickets/:id ───────────────────────────────────
-// Full ticket detail with messages and suggested resolutions
-
 router.get("/:id", async (req: Request, res: Response) => {
   const ticket = await prisma.ticket.findFirst({
     where: { id: req.params.id, deletedAt: null },
@@ -165,9 +159,6 @@ router.get("/:id", async (req: Request, res: Response) => {
 
   res.json(ticket);
 });
-
-// ─── POST /api/tickets/:id/messages ─────────────────────────
-// Send a response from the US team to the agent
 
 router.post("/:id/messages", async (req: Request, res: Response) => {
   const { text } = req.body;
@@ -274,13 +265,8 @@ router.post("/:id/messages", async (req: Request, res: Response) => {
   }
 });
 
-// ─── PATCH /api/tickets/:id ─────────────────────────────────
-// Update ticket metadata (status, severity, category, assignment, etc.)
-// Open to any internal user with a valid role claim. The role check is
-// defense-in-depth: tokens without a role (e.g., a misconfigured client
-// or a JWT minted outside the dashboard's sign-in flow) get a 403
-// instead of silently mutating data.
-
+// Role check is defense-in-depth: tokens without a role (e.g., a JWT minted
+// outside the dashboard's sign-in flow) get 403 instead of silently mutating.
 router.patch("/:id", requireRole("admin", "operations", "engineering", "support"), async (req: Request, res: Response) => {
   const { status, severity, category, assignedTo, tags, incidentId } = req.body;
 
@@ -373,9 +359,7 @@ router.patch("/:id", requireRole("admin", "operations", "engineering", "support"
   res.json(ticket);
 });
 
-// ─── POST /api/tickets/:id/notes ────────────────────────────
-// Add an internal team-only note. Never sent to the agent.
-
+// Internal team-only notes. Never sent to the agent.
 router.post("/:id/notes", async (req: Request, res: Response) => {
   const { text, authorId, mentions } = req.body;
 
@@ -441,9 +425,6 @@ router.post("/:id/notes", async (req: Request, res: Response) => {
   res.json(note);
 });
 
-// ─── POST /api/tickets/:id/resolve ──────────────────────────
-// Resolve a ticket with a resolution summary (feeds knowledge base)
-
 router.post("/:id/resolve", async (req: Request, res: Response) => {
   const { resolutionSummary } = req.body;
 
@@ -479,11 +460,8 @@ router.post("/:id/resolve", async (req: Request, res: Response) => {
   res.json(ticket);
 });
 
-// ─── POST /api/tickets/outreach ─────────────────────────────
-// Support-team-initiated thread. Translates the message into the
-// agent's preferred language, sends it via Twilio, then creates the
-// Ticket with the outbound message attached as the first message.
-
+// Support-team-initiated thread: create the ticket + a pending outbound
+// message, then enqueue the Twilio send.
 router.post("/outreach", async (req: Request, res: Response) => {
   const { agentId, message, severity, category, tags } = req.body as {
     agentId?: string;
@@ -586,11 +564,8 @@ router.post("/outreach", async (req: Request, res: Response) => {
   }
 });
 
-// ─── DELETE /api/tickets/:id (admin only) ───────────────────
-// Soft delete — sets deletedAt + deletedBy. The row stays in the
-// database for compliance/audit; queries filter it out by default.
-// Hard delete is intentionally NOT exposed via the API.
-
+// Soft delete only — rows stay in the database for compliance/audit and
+// queries filter them out by default. No hard-delete is exposed.
 router.delete("/:id", requireRole("admin"), async (req: Request, res: Response) => {
   const existing = await prisma.ticket.findFirst({
     where: { id: req.params.id, deletedAt: null },
@@ -618,11 +593,8 @@ router.delete("/:id", requireRole("admin"), async (req: Request, res: Response) 
   res.json({ id: ticket.id, deletedAt: ticket.deletedAt });
 });
 
-// ─── POST /api/tickets/:id/suggest-replies ─────────────────────────
-// AI-drafted reply candidates for the operator. Returns three options
-// varying in tone (direct / empathetic / investigative). The operator
-// picks one and edits before sending — these are never sent automatically.
-
+// Three AI-drafted reply candidates (direct / empathetic / investigative).
+// Operator picks and edits before sending — never sent automatically.
 router.post("/:id/suggest-replies", async (req: Request, res: Response) => {
   try {
     const suggestions = await suggestReplies(req.params.id);

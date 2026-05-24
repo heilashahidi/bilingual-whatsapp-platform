@@ -20,9 +20,8 @@ export type { ReplySuggestion };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
-// Resolves a Bearer header: prefer an explicitly-passed token (server
-// components pass theirs from cookies), otherwise auto-fetch via the
-// client-side endpoint when running in the browser.
+// Server components pass an explicit token from cookies; browser callers
+// fetch one via the client-side endpoint.
 async function authHeaders(token?: string): Promise<HeadersInit> {
   const t = token ?? (typeof window !== "undefined" ? await getClientAuthToken() : undefined);
   return t ? { Authorization: `Bearer ${t}` } : {};
@@ -74,9 +73,8 @@ export async function sendResponse(
   ticketId: string,
   text: string
 ): Promise<{ message: Message }> {
-  // The API now queues the Twilio send and returns a pending Message
-  // immediately. The translated text + delivery status arrive via the
-  // ticket:changed socket event once the worker completes.
+  // API returns a pending Message immediately; translated text + delivery
+  // status arrive via the ticket:changed socket once the worker completes.
   const res = await fetch(`${API_URL}/api/tickets/${ticketId}/messages`, {
     method: "POST",
     headers: {
@@ -234,9 +232,6 @@ export async function fetchUsers(token?: string): Promise<InternalUser[]> {
   return data.users;
 }
 
-// ─── Agents (search) ──────────────────────────────────────────────────
-// Used by the New Ticket modal's agent picker.
-
 export async function fetchAgents(
   params: { q?: string; limit?: number } = {},
   token?: string
@@ -256,10 +251,6 @@ export async function fetchAgents(
   const data = (await res.json()) as { agents: Agent[] };
   return data.agents;
 }
-
-// ─── Outreach ticket ──────────────────────────────────────────────────
-// Support-team-initiated thread. Backend translates the message into the
-// agent's preferredLanguage and sends via Twilio before creating the ticket.
 
 export interface OutreachTicketInput {
   agentId: string;
@@ -286,8 +277,6 @@ export async function createOutreachTicket(
   }
   return res.json();
 }
-
-// ─── Incidents ─────────────────────────────────────────────────────────
 
 export async function fetchIncidents(
   params: { status?: string; country?: string } = {},

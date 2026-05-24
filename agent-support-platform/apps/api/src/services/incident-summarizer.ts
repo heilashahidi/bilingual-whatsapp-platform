@@ -131,8 +131,6 @@ Shape:
   }
 }
 
-// ─── helpers ──────────────────────────────────────────────────────────
-
 function parseSummary(raw: string): SummaryOutput | null {
   try {
     const clean = raw.replace(/```json|```/g, "").trim();

@@ -18,9 +18,6 @@ function parseStatus(v: unknown): IncidentStatus | undefined {
     : undefined;
 }
 
-// ─── GET /api/incidents ─────────────────────────────────────────────
-// List incidents, newest first. Filter by ?status= or ?country=.
-
 router.get("/", async (req: Request, res: Response) => {
   const { status, country } = req.query;
 
@@ -46,9 +43,6 @@ router.get("/", async (req: Request, res: Response) => {
     }),
   });
 });
-
-// ─── GET /api/incidents/:id ─────────────────────────────────────────
-// Single incident with its contributing tickets (lightweight summary).
 
 router.get("/:id", async (req: Request, res: Response) => {
   const incident = await prisma.incident.findUnique({
@@ -78,12 +72,7 @@ router.get("/:id", async (req: Request, res: Response) => {
   return res.json({ incident });
 });
 
-// ─── PATCH /api/incidents/:id ───────────────────────────────────────
-// Update incident status / notes (operator action). Lightweight — full
-// resolution workflow can be layered on later. Restricted to admin,
-// operations, and engineering — incident management isn't a support-
-// frontline action.
-
+// Restricted to admin/operations/engineering — not a support-frontline action.
 router.patch("/:id", requireRole("admin", "operations", "engineering"), async (req: Request, res: Response) => {
   const { status, rootCause, resolutionNotes } = req.body;
 

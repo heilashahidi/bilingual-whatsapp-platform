@@ -3,14 +3,9 @@ import { prisma } from "../services/database";
 
 const router = Router();
 
-// ─── GET /api/users ─────────────────────────────────────────
-// List internal users. Used by the assignee dropdown AND by NextAuth's
-// signIn callback to verify an email is on the allowlist before issuing
-// a session. The email query param narrows the result for that case.
-//
-// Intentionally unauthenticated — NextAuth has to call this before a
-// session exists. Returns only id/name/email/role (no PII).
-
+// Intentionally unauthenticated — NextAuth's signIn callback hits this
+// before a session exists, to allowlist the email. Returns id/name/email/role
+// only (no PII). The `email` param narrows the result for that lookup.
 router.get("/", async (req: Request, res: Response) => {
   const { email } = req.query;
   const where = email && typeof email === "string"
