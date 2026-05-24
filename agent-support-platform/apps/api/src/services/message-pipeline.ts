@@ -1,5 +1,16 @@
+import { Language, Prisma } from "@prisma/client";
 import { RawMessage, EXTENDED_SLA_COUNTRIES, SLA_DEFAULTS } from "@asp/shared";
 import { prisma } from "./database";
+
+// Narrow an arbitrary string (e.g. translator output) into a Prisma
+// Language enum, falling back to the agent's preferredLanguage when the
+// translator returns an unsupported code.
+const SUPPORTED_LANGUAGES = new Set<Language>(Object.values(Language));
+function toLanguage(value: string | null | undefined, fallback: Language): Language {
+  return value && SUPPORTED_LANGUAGES.has(value as Language)
+    ? (value as Language)
+    : fallback;
+}
 import { emitTicketEvent } from "./realtime";
 import { findSuggestedResolutions } from "./kb-search";
 import { notifyNewTicket } from "./notifier";
@@ -58,7 +69,7 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
         phoneNumber: raw.agentPhone,
         name: raw.metadata.profileName || "Unknown Agent",
         country,
-        preferredLanguage: defaultLanguage as any,
+        preferredLanguage: defaultLanguage,
         branchId: branch.id,
       },
       include: { branch: true },
@@ -150,7 +161,7 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
       originalLanguage: agent.preferredLanguage,
       translatedText: raw.textBody, // raw initially; patched after translation
       translationConfidence: null,
-      contentType: raw.contentType as any,
+      contentType: raw.contentType,
       mediaUrls: raw.mediaUrl ? [raw.mediaUrl] : [],
       classification: undefined,
       whatsappMessageId: raw.externalId,
@@ -204,7 +215,7 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
       // Short-circuit: source is English → no translation needed,
       // classify the original text directly.
       translatedText = raw.textBody;
-      detectedLanguage = "en" as any;
+      detectedLanguage = "en";
       translationConfidence = 1.0;
       console.log(`  ✓ Skipped translation (en → en, heuristic)`);
 
@@ -225,7 +236,10 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
 
       if (translationResult.status === "fulfilled") {
         translatedText = translationResult.value.translatedText;
-        detectedLanguage = translationResult.value.detectedLanguage as any;
+        detectedLanguage = toLanguage(
+          translationResult.value.detectedLanguage,
+          agent.preferredLanguage
+        );
         translationConfidence = translationResult.value.confidence;
         console.log(`  ✓ Translated (${detectedLanguage} → en): "${translatedText?.substring(0, 80)}..."`);
       } else {
@@ -269,10 +283,15 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
   await prisma.message.update({
     where: { id: message.id },
     data: {
-      originalLanguage: detectedLanguage as any,
+      originalLanguage: detectedLanguage,
       translatedText,
       translationConfidence,
-      classification: classification as any,
+      // Prisma's InputJsonValue requires an index signature; our
+      // ClassificationResult is a closed shape but is JSON-safe. The cast
+      // here is type-only — see Prisma docs on typed JSON fields.
+      classification: classification
+        ? (classification as object as Prisma.InputJsonValue)
+        : Prisma.JsonNull,
     },
   });
 
@@ -291,8 +310,8 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
     ticket = await prisma.ticket.update({
       where: { id: ticket!.id },
       data: {
-        category: classification.category as any,
-        severity: classification.severity as any,
+        category: classification.category,
+        severity: classification.severity,
         productArea: classification.productArea || null,
         tags: classification.tags || [],
         slaFirstResponseDeadline: new Date(now.getTime() + slaConfig.firstResponseMinutes * 60000),
@@ -321,8 +340,8 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
       data: {
         agentId: agent.id,
         status: "open",
-        category: classification.category as any,
-        severity: classification.severity as any,
+        category: classification.category,
+        severity: classification.severity,
         productArea: classification.productArea || null,
         tags: classification.tags || [],
         agentReportedAt: new Date(raw.agentTimestamp),

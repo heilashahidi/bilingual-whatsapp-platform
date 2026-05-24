@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { Prisma, TicketStatus, Severity, TicketCategory } from "@prisma/client";
 import { EXTENDED_SLA_COUNTRIES, SLA_DEFAULTS } from "@asp/shared";
 import { prisma } from "../services/database";
 import { emitTicketEvent } from "../services/realtime";
@@ -21,6 +22,28 @@ const router = Router();
 // by offset).
 const LIMIT_DEFAULT = 50;
 const LIMIT_MAX = 200;
+
+const VALID_TICKET_STATUSES = new Set<TicketStatus>(
+  Object.values(TicketStatus)
+);
+const VALID_SEVERITIES = new Set<Severity>(Object.values(Severity));
+const VALID_CATEGORIES = new Set<TicketCategory>(Object.values(TicketCategory));
+
+function parseTicketStatus(v: unknown): TicketStatus | undefined {
+  return typeof v === "string" && VALID_TICKET_STATUSES.has(v as TicketStatus)
+    ? (v as TicketStatus)
+    : undefined;
+}
+function parseSeverity(v: unknown): Severity | undefined {
+  return typeof v === "string" && VALID_SEVERITIES.has(v as Severity)
+    ? (v as Severity)
+    : undefined;
+}
+function parseCategory(v: unknown): TicketCategory | undefined {
+  return typeof v === "string" && VALID_CATEGORIES.has(v as TicketCategory)
+    ? (v as TicketCategory)
+    : undefined;
+}
 
 function parsePagination(
   rawLimit: unknown,
@@ -54,12 +77,17 @@ router.get("/", async (req: Request, res: Response) => {
     return res.status(400).json({ error: pagination.error });
   }
 
-  const where: any = { deletedAt: null };
-  if (status) where.status = status;
-  if (severity) where.severity = severity;
-  if (category) where.category = category;
-  if (assignedTo) where.assignedTo = assignedTo;
-  if (country) where.agent = { country };
+  const where: Prisma.TicketWhereInput = { deletedAt: null };
+  const parsedStatus = parseTicketStatus(status);
+  if (parsedStatus) where.status = parsedStatus;
+  const parsedSeverity = parseSeverity(severity);
+  if (parsedSeverity) where.severity = parsedSeverity;
+  const parsedCategory = parseCategory(category);
+  if (parsedCategory) where.category = parsedCategory;
+  if (typeof assignedTo === "string" && assignedTo) where.assignedTo = assignedTo;
+  if (country === "HT" || country === "DO" || country === "CD") {
+    where.agent = { country };
+  }
 
   const tickets = await prisma.ticket.findMany({
     where,
@@ -263,17 +291,30 @@ router.patch("/:id", requireRole("admin", "operations", "engineering", "support"
   });
   if (!before) return res.status(404).json({ error: "Ticket not found" });
 
-  const data: any = {};
-  if (status) data.status = status;
-  if (severity) data.severity = severity;
-  if (category) data.category = category;
-  if (assignedTo !== undefined) data.assignedTo = assignedTo;
-  if (tags) data.tags = tags;
-  if (incidentId !== undefined) data.incidentId = incidentId;
+  const data: Prisma.TicketUncheckedUpdateInput = {};
+  const parsedPatchStatus = parseTicketStatus(status);
+  if (parsedPatchStatus) data.status = parsedPatchStatus;
+  const parsedPatchSeverity = parseSeverity(severity);
+  if (parsedPatchSeverity) data.severity = parsedPatchSeverity;
+  const parsedPatchCategory = parseCategory(category);
+  if (parsedPatchCategory) data.category = parsedPatchCategory;
+  if (assignedTo !== undefined) {
+    data.assignedTo = assignedTo === null ? null : String(assignedTo);
+  }
+  if (Array.isArray(tags)) {
+    data.tags = tags.filter((t): t is string => typeof t === "string");
+  }
+  if (incidentId !== undefined) {
+    data.incidentId = incidentId === null ? null : String(incidentId);
+  }
 
-  if (status === "resolved") {
+  if (parsedPatchStatus === "resolved") {
     data.resolvedAt = new Date();
-  } else if (status && before.status === "resolved" && status !== "closed") {
+  } else if (
+    parsedPatchStatus &&
+    before.status === "resolved" &&
+    parsedPatchStatus !== "closed"
+  ) {
     // Re-opening a resolved ticket — clear resolvedAt so the resolution
     // banner / SLA calc don't show a stale "resolved at X" timestamp.
     data.resolvedAt = null;
@@ -286,28 +327,28 @@ router.patch("/:id", requireRole("admin", "operations", "engineering", "support"
   });
 
   // Record one audit row per dimension that actually changed.
-  if (status && status !== before.status) {
+  if (parsedPatchStatus && parsedPatchStatus !== before.status) {
     recordEvent({
       ticketId: ticket.id,
       action: "status_changed",
       actor: req.user,
-      payload: { from: before.status, to: status },
+      payload: { from: before.status, to: parsedPatchStatus },
     });
   }
-  if (severity && severity !== before.severity) {
+  if (parsedPatchSeverity && parsedPatchSeverity !== before.severity) {
     recordEvent({
       ticketId: ticket.id,
       action: "severity_changed",
       actor: req.user,
-      payload: { from: before.severity, to: severity },
+      payload: { from: before.severity, to: parsedPatchSeverity },
     });
   }
-  if (category && category !== before.category) {
+  if (parsedPatchCategory && parsedPatchCategory !== before.category) {
     recordEvent({
       ticketId: ticket.id,
       action: "category_changed",
       actor: req.user,
-      payload: { from: before.category, to: category },
+      payload: { from: before.category, to: parsedPatchCategory },
     });
   }
   if (assignedTo !== undefined && assignedTo !== before.assignedTo) {

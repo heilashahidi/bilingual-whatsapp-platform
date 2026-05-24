@@ -1,4 +1,5 @@
 import twilio from "twilio";
+import type { MessageListInstanceCreateOptions } from "twilio/lib/rest/api/v2010/account/message";
 import { BOT_MAX_MESSAGE_LENGTH } from "@asp/shared";
 import { translateResponse } from "./translation";
 
@@ -60,7 +61,7 @@ export async function sendWhatsAppMessage(
   const client = getClient();
   const fromNumber = process.env.TWILIO_WHATSAPP_NUMBER || "+14155238886";
 
-  const messageParams: any = {
+  const messageParams: MessageListInstanceCreateOptions = {
     from: `whatsapp:${fromNumber}`,
     to: `whatsapp:${toPhone}`,
     body,
