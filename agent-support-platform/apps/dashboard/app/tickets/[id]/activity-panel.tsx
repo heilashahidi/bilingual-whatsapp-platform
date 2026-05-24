@@ -1,4 +1,5 @@
 import type { AuditAction, AuditEvent } from "@/lib/types";
+import { formatRelative } from "@/lib/date-format";
 
 const ACTION_VERB: Record<AuditAction, string> = {
   ticket_created: "created the ticket",
@@ -13,17 +14,6 @@ const ACTION_VERB: Record<AuditAction, string> = {
   resolved: "resolved the ticket",
   deleted: "deleted the ticket",
 };
-
-function formatRelative(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.round(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-}
 
 function actorLabel(event: AuditEvent): string {
   if (event.actorEmail) return event.actorEmail.split("@")[0];

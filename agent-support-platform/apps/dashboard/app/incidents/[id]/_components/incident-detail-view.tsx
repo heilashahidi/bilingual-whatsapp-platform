@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { updateIncident } from "@/lib/api";
 import { SEVERITY_DOT, SEVERITY_PILL } from "@/lib/severity-styles";
+import { formatAbsolute, formatRelative } from "@/lib/date-format";
 import type {
   Country,
   IncidentDetail,
@@ -30,26 +31,6 @@ const COUNTRY_LABEL: Record<Country, string> = {
   DO: "Dominican Republic",
   CD: "DR Congo",
 };
-
-function formatRelative(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.round(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-}
-
-function formatAbsolute(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 export function IncidentDetailView({ incident }: { incident: IncidentDetail }) {
   const router = useRouter();

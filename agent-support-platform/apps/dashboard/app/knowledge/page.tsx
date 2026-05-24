@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { fetchKnowledgeArticles } from "@/lib/api";
 import { getServerApiToken } from "@/lib/auth-server";
+import { formatRelative } from "@/lib/date-format";
 import type { KnowledgeArticle } from "@/lib/types";
 import { ArticleActions } from "./_components/article-actions";
 
@@ -11,16 +12,6 @@ const statusStyle: Record<KnowledgeArticle["status"], string> = {
   active: "bg-emerald-100 text-emerald-800 ring-emerald-200",
   archived: "bg-slate-100 text-slate-600 ring-slate-200",
 };
-
-function formatRelative(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.round(diffMs / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-}
 
 export default async function KnowledgePage({
   searchParams,

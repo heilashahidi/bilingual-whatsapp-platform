@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import { SEVERITY_PILL } from "@/lib/severity-styles";
 import { useUiPrefs } from "@/lib/ui-prefs";
+import { formatRelative, formatAbsolute as formatTime } from "@/lib/date-format";
 import { ActivityPanel } from "../activity-panel";
 import { ResponseComposer } from "../response-composer";
 import { TicketActions } from "../ticket-actions";
@@ -26,26 +27,6 @@ const statusStyles: Record<TicketStatus, string> = {
   resolved: "bg-emerald-100 text-emerald-800",
   closed: "bg-slate-100 text-slate-600",
 };
-
-function formatRelative(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.round(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 type TimelineItem =
   | { kind: "message"; data: Message; createdAt: string }
