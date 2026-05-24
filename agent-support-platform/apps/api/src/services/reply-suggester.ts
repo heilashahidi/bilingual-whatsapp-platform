@@ -1,4 +1,7 @@
 import { prisma } from "./database";
+import type { ReplySuggestion } from "@asp/shared";
+
+export type { ReplySuggestion };
 
 // Reply-suggester: given a ticket id, ask Claude Haiku for three candidate
 // operator responses (in English — the outbound translation pipeline handles
@@ -12,11 +15,6 @@ import { prisma } from "./database";
 // Falls back gracefully when ANTHROPIC_API_KEY is unset or Claude errors:
 // returns an empty array rather than throwing, so the composer just hides
 // the suggestions UI without breaking anything else.
-
-export interface ReplySuggestion {
-  tone: string;
-  text: string;
-}
 
 interface ConversationMessageForPrompt {
   who: "agent" | "operator";
