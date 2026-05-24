@@ -1,4 +1,5 @@
 import { io, Socket } from "socket.io-client";
+import type { TicketEventKind } from "@asp/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -15,6 +16,6 @@ export function getSocket(): Socket {
 }
 
 export type TicketChangedEvent = {
-  kind: "created" | "updated" | "message";
+  kind: TicketEventKind;
   ticketId: string;
 };
