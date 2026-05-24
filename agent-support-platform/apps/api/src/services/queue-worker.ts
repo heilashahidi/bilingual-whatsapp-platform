@@ -1,10 +1,8 @@
 import { Worker, type Job } from "bullmq";
 import type { RawMessage } from "@asp/shared";
 import { processInboundMessage } from "./message-pipeline";
-import {
-  INBOUND_QUEUE_NAME,
-  getQueueConnection,
-} from "./queue";
+import { INBOUND_QUEUE_NAME } from "./queue";
+import { getQueueConnection } from "./redis-connection";
 
 // In-process worker that drains the inbound queue.
 //

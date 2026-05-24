@@ -1,5 +1,5 @@
 import { Worker, type Job } from "bullmq";
-import { getQueueConnection } from "./queue";
+import { getQueueConnection } from "./redis-connection";
 import { OUTBOUND_QUEUE_NAME } from "./outbound-queue";
 import type { OutboundJob } from "./outbound-types";
 import { processOutboundMessage, markOutboundFailed } from "./outbound-pipeline";
