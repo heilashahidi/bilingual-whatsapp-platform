@@ -1,9 +1,7 @@
 import { Worker, type Job } from "bullmq";
-import { getQueueConnection } from "./queue";
-import {
-  OUTBOUND_QUEUE_NAME,
-  type OutboundJob,
-} from "./outbound-queue";
+import { getQueueConnection } from "./redis-connection";
+import { OUTBOUND_QUEUE_NAME } from "./outbound-queue";
+import type { OutboundJob } from "./outbound-types";
 import { processOutboundMessage, markOutboundFailed } from "./outbound-pipeline";
 
 // Outbound worker. Drains the queue, calling Twilio per job.
