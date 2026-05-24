@@ -9,14 +9,10 @@ import { getSocket, type TicketChangedEvent } from "@/lib/socket";
 import type { InternalUser, TicketDetail } from "@/lib/types";
 import { TicketDetailView } from "../[id]/_components/ticket-detail";
 
-// Slide-in panel that opens when the URL has `?ticket=<id>`. Reuses the
-// same TicketDetailView the full route uses, so behavior stays in sync.
-//
-// Why query-param state instead of an intercepting route:
-// - Deep links still work — /tickets/[id] remains a full page.
-// - Browser back/forward toggles the drawer naturally (back from
-//   /tickets?ticket=abc → /tickets, drawer closes).
-// - RealtimeRefresh re-mounts on each opened ticket via `ticketId` prop.
+// Slide-in panel opened by `?ticket=<id>` in the URL. Reuses TicketDetailView
+// from the full /tickets/[id] route so behavior stays in sync. Query-param
+// state (not intercepting route) keeps deep links and browser back/forward
+// working naturally.
 export function TicketDrawer() {
   const router = useRouter();
   const pathname = usePathname();
@@ -36,17 +32,15 @@ export function TicketDrawer() {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [router, pathname, searchParams]);
 
-  // Fetch ticket whenever the open id changes. Users are cached after
-  // the first fetch — list rarely changes during a session.
+  // Users list cached after first fetch — rarely changes during a session.
   useEffect(() => {
     if (!ticketId) {
       setTicket(null);
       setError(null);
       return;
     }
-    // Clear the previous ticket's data immediately so notes / messages
-    // / actions from the prior selection never render under the new
-    // ticket's URL while the fetch is in flight.
+    // Clear stale data so the previous ticket's notes/messages don't render
+    // under the new URL while the fetch is in flight.
     setTicket(null);
     let cancelled = false;
     setLoading(true);
@@ -73,8 +67,7 @@ export function TicketDrawer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
 
-  // Live updates: refetch when this ticket is mutated server-side
-  // (assignment, severity change, new note, new message, etc.).
+  // Refetch on server-side mutation (assignment, severity, new note/message).
   useEffect(() => {
     if (!ticketId) return;
     const socket = getSocket();
@@ -92,7 +85,6 @@ export function TicketDrawer() {
     };
   }, [ticketId]);
 
-  // ESC closes the drawer
   useEffect(() => {
     if (!ticketId) return;
     function onKey(e: KeyboardEvent) {
@@ -102,11 +94,8 @@ export function TicketDrawer() {
     return () => window.removeEventListener("keydown", onKey);
   }, [ticketId, close]);
 
-  // Lock body scroll AND mark the body so the site header can hide
-  // itself via CSS (see globals.css). Keeps the underlying page from
-  // bleeding through the scrim as a readable nav bar — the user
-  // wanted the kept-light scrim (so the dashboard is still felt
-  // behind) but without the literal text band peeking through.
+  // Lock body scroll + flag the body so globals.css can hide the site
+  // header. Without the flag the nav bar bleeds through the scrim.
   useEffect(() => {
     if (!ticketId) return;
     const original = document.body.style.overflow;
@@ -118,8 +107,7 @@ export function TicketDrawer() {
     };
   }, [ticketId]);
 
-  // SSR-safe portal target. Only render the overlay once the client
-  // mount has flushed so document.body exists.
+  // Wait for client mount so document.body exists before portaling.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -132,9 +120,6 @@ export function TicketDrawer() {
       aria-modal="true"
       aria-label="Ticket details"
     >
-      {/* Scrim — fully transparent. Still clickable to close the
-          drawer (covers the left half of the viewport), but lets the
-          dashboard underneath show through clean and crisp. */}
       <button
         type="button"
         aria-label="Close ticket"
@@ -142,10 +127,6 @@ export function TicketDrawer() {
         className="drawer-scrim flex-1 cursor-default bg-transparent"
       />
 
-      {/* Panel — no header strip. Close + "open full" controls float
-          in the top-right corner as small icon buttons so the ticket
-          title hugs the very top of the panel without a horizontal
-          end-to-end bar above it. */}
       <div
         ref={panelRef}
         className="drawer relative flex w-full max-w-5xl flex-col overflow-hidden border-l border-slate-200 bg-white/85 shadow-2xl backdrop-blur-xl"
@@ -190,9 +171,7 @@ export function TicketDrawer() {
     </div>
   );
 
-  // Portal to document.body so the overlay is a sibling of <main>,
-  // not nested inside it. Lets us hide the entire page content under
-  // the drawer without affecting the drawer itself (visibility and
-  // opacity inherit, so a nested drawer would be hidden too).
+  // Portal so the overlay is a sibling of <main>, not nested inside —
+  // otherwise hiding page content would hide the drawer too.
   return createPortal(overlay, document.body);
 }

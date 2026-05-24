@@ -2,15 +2,8 @@
 
 import type { InternalUser } from "@/lib/types";
 
-// Empty-state placeholder for the inbox view's right pane. Ticket
-// detail itself is rendered by <TicketDrawer /> as a full-viewport
-// overlay on every view (inbox / kanban / list) — that gives a
-// consistent open-ticket experience and lets the drawer's blurred
-// scrim de-emphasize whatever was behind it.
-//
-// Kept as its own file (and still accepting `users`) so the shell
-// signature doesn't churn if we later want to bring the inline pane
-// back as an option, or use this slot for queue insights, etc.
+// Empty-state slot for the inbox's right pane. Actual detail renders in
+// <TicketDrawer /> as a viewport overlay across all views.
 export function DetailPane(_props: { users: InternalUser[] }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">

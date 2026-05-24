@@ -5,17 +5,8 @@ import { useEffect, useState } from "react";
 import { fetchTickets } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 
-// "Tickets" nav link with a small badge showing the count of
-// unresolved tickets (status ∈ {open, in_progress, waiting_on_agent}).
-// Mirrors the IncidentsNavLink pattern — the badge is a peripheral
-// "stuff needs attention" signal, not a vanity total. Resolved /
-// closed tickets are excluded so the number is actionable; it goes
-// up when work arrives and down when work is finished.
-//
-// Refresh strategy: fetch on mount, refetch when the socket fires
-// ticket:changed, plus a 90s safety poll. Fetches with limit:200
-// matching the inbox page so we get the same set.
-
+// Nav badge of unresolved tickets (open / in_progress / waiting_on_agent).
+// Refreshes on ticket:changed plus a 90s safety poll.
 export function TicketsNavLink() {
   const [count, setCount] = useState<number>(0);
 
@@ -34,9 +25,7 @@ export function TicketsNavLink() {
         ).length;
         setCount(active);
       } catch {
-        // Non-fatal — leave the previous count rather than zeroing
-        // out and tricking the operator into thinking the queue
-        // is empty.
+        // Non-fatal — keep stale count rather than zeroing the badge.
       }
     }
 

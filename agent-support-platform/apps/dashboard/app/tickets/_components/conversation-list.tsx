@@ -10,11 +10,8 @@ import { useUiPrefs } from "@/lib/ui-prefs";
 import { readFiltersFromParams } from "./filters-bar";
 import { SlaTimer } from "./sla-timer";
 
-// Front-style dense conversation list. Each row is a Link to
-// /tickets?ticket=<id> so clicking selects the ticket and the right
-// pane renders the detail (handled by tickets-shell). Rows are tighter
-// than the kanban cards — designed for scanning a queue.
-
+// Dense conversation list. Each row links to /tickets?ticket=<id>; the
+// right pane (tickets-shell) renders the detail. Tighter than kanban cards.
 const STATUS_LABEL: Record<TicketStatus, string> = {
   open: "Open",
   in_progress: "In progress",
@@ -47,8 +44,7 @@ export function ConversationList({
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   const activeId = searchParams.get("ticket");
 
-  // Apply the same URL-driven filters the kanban applies, plus the inbox
-  // sidebar's status filter (which writes ?status=…).
+  // Same URL-driven filters as kanban, plus the inbox sidebar's ?status=.
   const filtered = useMemo(() => {
     const filters = readFiltersFromParams(
       new URLSearchParams(searchParams.toString())
@@ -90,12 +86,9 @@ export function ConversationList({
     });
   }, [tickets, searchParams, session]);
 
-  // j/k navigation: move the active selection up or down the filtered
-  // list without touching the mouse. Bound to the conversation list
-  // (not the document root) via a useEffect because j/k overlap with
-  // ordinary typing — the global keyboard-shortcuts handler skips
-  // form controls, but we still want j/k to do nothing when no list
-  // is showing.
+  // j/k step selection through the filtered list. Bound only when a list is
+  // showing so the keys do nothing on empty views (typing-into-input is
+  // already guarded inside onKey).
   useEffect(() => {
     if (filtered.length === 0) return;
     function onKey(e: KeyboardEvent) {
@@ -112,7 +105,7 @@ export function ConversationList({
 
       const currentIdx = filtered.findIndex((t) => t.id === activeId);
       const delta = e.key === "j" ? 1 : -1;
-      // No selection yet → first j picks index 0, first k picks last.
+      // No selection yet: first j picks index 0, first k picks last.
       const nextIdx =
         currentIdx === -1
           ? e.key === "j"
@@ -131,9 +124,7 @@ export function ConversationList({
     return () => window.removeEventListener("keydown", onKey);
   }, [filtered, activeId, searchParams, pathname, router]);
 
-  // Tiny coloured initials chip — used inline on the conversation row in
-  // place of the formerly verbose "· assignee name" line. Same hue
-  // derivation as kanban's AssigneeAvatar so the two surfaces match.
+  // Tiny initials chip; hue derivation matches kanban's AssigneeAvatar.
   function AssigneeDot({ user }: { user: InternalUser }) {
     const initials = user.name
       .split(" ")
@@ -170,14 +161,8 @@ export function ConversationList({
       {filtered.map((t) => {
         const isActive = t.id === activeId;
         const latest = t.messages[0];
-        // For inbound: originalText is the agent's language, translatedText
-        // is English. For outbound: originalText is the operator's English,
-        // translatedText is the foreign-language version we sent to the
-        // agent. So "English-view" and "agent-language-view" depend on
-        // message direction — picking translatedText alone (the old code)
-        // shows English for inbound but FOREIGN for outbound, which is
-        // why the kanban snippet was wrong on tickets whose latest message
-        // was an operator reply or auto-intake.
+        // Inbound: translatedText is English, originalText is agent language.
+        // Outbound: originalText is English, translatedText is what was sent.
         const isInboundLatest = latest?.direction === "inbound";
         const englishView = isInboundLatest
           ? latest?.translatedText || ""
@@ -201,18 +186,12 @@ export function ConversationList({
                   : "hover:bg-slate-50"
               }`}
             >
-              {/* Severity dot — flush left */}
               <span
                 className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${SEVERITY_DOT[t.severity]}`}
                 title={`${t.severity} severity`}
               />
 
               <div className="min-w-0 flex-1">
-                {/* Line 1: agent name + flag + SLA + tiny status pill + tiny
-                    assignee avatar. Branch name and assignee name (formerly
-                    line 3) were dropped — those are detail-pane info, not
-                    triage-scan info. min-w-0 on the inner flex lets the
-                    truncate actually shrink the name when needed. */}
                 <div className="flex min-w-0 items-center gap-1.5">
                   <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-900">
                     {t.agent.name}
@@ -236,8 +215,6 @@ export function ConversationList({
                   {assignee && <AssigneeDot user={assignee} />}
                 </div>
 
-                {/* Line 2: snippet (English by default, original
-                    language when the bilingual toggle is on) */}
                 <p
                   dir={prefs.bilingual ? "auto" : undefined}
                   className="mt-0.5 truncate text-[12px] text-slate-600"

@@ -2,20 +2,9 @@
 
 import { useEffect, useState } from "react";
 
-// Global keyboard shortcuts. Mounted once in the root layout so the
-// listeners are always live regardless of route.
-//
-// Shortcuts:
-//   /  → focus the tickets search input (any element with
-//        id="tickets-search")
-//   ?  → toggle the shortcut-reference overlay
-//   Esc → close the overlay
-//
-// Anything else (j/k for ticket navigation, etc.) lives in the
-// individual components that own the relevant state — see
-// conversation-list.tsx for j/k. Putting page-specific shortcuts
-// next to their state is simpler than threading a global handler.
-
+// Global shortcuts only: / focuses #tickets-search, ? toggles the help
+// overlay, Esc closes it. Page-scoped shortcuts (j/k etc.) live with their
+// state in the owning component (see conversation-list.tsx).
 const SHORTCUTS: Array<{ keys: string; label: string }> = [
   { keys: "/", label: "Focus the search box" },
   { keys: "j", label: "Next ticket in the conversation list" },
@@ -30,7 +19,6 @@ export function KeyboardShortcuts() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      // Never trigger while typing into a form control.
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName;
       const isTyping =
@@ -39,8 +27,6 @@ export function KeyboardShortcuts() {
         tag === "SELECT" ||
         (t && (t as HTMLElement).isContentEditable);
       if (isTyping) return;
-
-      // Modifier keys shouldn't trigger our single-key shortcuts.
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       if (e.key === "/") {

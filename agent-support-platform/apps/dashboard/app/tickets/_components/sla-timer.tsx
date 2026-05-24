@@ -2,11 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-// Compact SLA indicator: a circular progress ring + remaining time.
-// Ring fills as the deadline approaches; turns red when overdue.
-//
-// Props match the original component so all existing call sites
-// (KanbanBoard cards, ticket detail page) keep working.
+// Circular progress ring + remaining time. Fills as deadline approaches; red when overdue.
 export function SlaTimer({
   deadline,
   size = 16,
@@ -20,8 +16,7 @@ export function SlaTimer({
 
   useEffect(() => {
     if (!deadline) return;
-    // 30s ticks — the ring's 1-minute granularity makes anything
-    // faster a waste of renders.
+    // 30s ticks — ring is minute-granular, faster would waste renders.
     const id = setInterval(() => setTick((t) => t + 1), 30_000);
     return () => clearInterval(id);
   }, [deadline]);
@@ -36,12 +31,8 @@ export function SlaTimer({
   const absSec = Math.floor(Math.abs(diffMs) / 1000);
   const overdue = diffMs < 0;
 
-  // Fill fraction: 0 when fresh, 1 when overdue.
-  // We anchor "full ring" to 4 hours of SLA window — past that, ring is
-  // mostly empty and reads as "plenty of time".
-  //
-  // Clamp to [0, 1] so deadlines >4h away don't produce a negative
-  // dasharray (which some browsers render as a solid ring instead of empty).
+  // Full ring anchors to a 4-hour window. Clamp prevents negative
+  // dasharray (some browsers render that as a solid ring).
   const windowSec = 4 * 60 * 60;
   const fill = overdue
     ? 1
