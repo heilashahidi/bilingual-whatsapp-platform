@@ -174,7 +174,7 @@ export function TicketDrawer() {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 pb-5 pr-28">
+        <div className="flex-1 overflow-y-auto px-5 pt-8 pb-5 pr-28">
           {loading && !ticket && (
             <div className="py-8 text-center text-sm text-slate-500">Loading…</div>
           )}
