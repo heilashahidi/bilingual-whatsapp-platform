@@ -148,7 +148,7 @@ export function TicketDrawer() {
           end-to-end bar above it. */}
       <div
         ref={panelRef}
-        className="drawer relative flex w-full max-w-5xl flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl"
+        className="drawer relative flex w-full max-w-5xl flex-col overflow-hidden border-l border-slate-200 bg-white/85 shadow-2xl backdrop-blur-xl"
       >
         <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1">
           {ticketId && (
