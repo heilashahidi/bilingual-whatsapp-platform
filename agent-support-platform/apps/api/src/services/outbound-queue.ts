@@ -1,6 +1,9 @@
 import { Queue } from "bullmq";
 import { getQueueConnection } from "./queue";
 import { processOutboundMessage } from "./outbound-pipeline";
+import type { OutboundJob } from "./outbound-types";
+
+export type { OutboundJob } from "./outbound-types";
 
 // Outbound WhatsApp send queue. Mirrors the inbound queue pattern
 // (queue.ts) and shares the same Redis connection.
@@ -27,15 +30,6 @@ import { processOutboundMessage } from "./outbound-pipeline";
 // if Redis isn't healthy, processOutboundMessage runs inline.
 
 export const OUTBOUND_QUEUE_NAME = "outbound-whatsapp";
-
-export interface OutboundJob {
-  messageId: string; // Pre-created Message row to update with sid/status
-  ticketId: string;
-  agentPhone: string;
-  agentCountry: string;
-  englishText: string;
-  targetLanguage: string;
-}
 
 let queue: Queue<OutboundJob> | null = null;
 

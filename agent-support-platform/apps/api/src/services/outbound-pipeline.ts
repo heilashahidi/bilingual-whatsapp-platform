@@ -3,7 +3,7 @@ import { prisma } from "./database";
 import { emitTicketEvent } from "./realtime";
 import { sendWhatsAppMessage } from "../integrations/whatsapp";
 import { translateResponse } from "../integrations/translation";
-import type { OutboundJob } from "./outbound-queue";
+import type { OutboundJob } from "./outbound-types";
 
 /**
  * Translate (if needed), enforce per-country length, and send via
