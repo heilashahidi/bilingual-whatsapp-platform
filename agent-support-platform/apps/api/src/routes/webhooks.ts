@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import twilio from "twilio";
 import { prisma } from "../services/database";
 import { emitTicketEvent } from "../services/realtime";
@@ -15,7 +15,7 @@ const router = Router();
 // /webhooks/whatsapp endpoint and the /webhooks/whatsapp/status
 // delivery-receipt endpoint.
 
-const validateTwilio = (req: Request, res: Response, next: Function) => {
+const validateTwilio = (req: Request, res: Response, next: NextFunction) => {
   if (process.env.NODE_ENV === "development" && process.env.SKIP_TWILIO_VALIDATION === "true") {
     return next();
   }

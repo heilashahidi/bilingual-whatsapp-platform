@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../services/database";
 
 const router = Router();
@@ -14,8 +15,10 @@ router.get("/", async (req: Request, res: Response) => {
   // Accept both `q` (new modal) and `search` (older callers)
   const q = (req.query.q || req.query.search) as string | undefined;
 
-  const where: any = {};
-  if (country) where.country = country;
+  const where: Prisma.AgentWhereInput = {};
+  if (country === "HT" || country === "DO" || country === "CD") {
+    where.country = country;
+  }
   if (q && q.trim()) {
     where.OR = [
       { name: { contains: q, mode: "insensitive" } },
