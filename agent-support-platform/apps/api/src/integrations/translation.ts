@@ -61,10 +61,6 @@ function cacheSet(text: string, targetLanguage: string, result: TranslationResul
   }
 }
 
-export function _resetTranslationCacheForTests(): void {
-  translationCache.clear();
-}
-
 async function translateCached(
   text: string,
   targetLanguage: string
