@@ -1,8 +1,8 @@
 # API Reference
 
-Base URL: `http://localhost:3001` (development) / `https://api.yourdomain.com` (production)
+Base URL: `http://localhost:3001` (development) / `https://nclusion-api.up.railway.app` (production)
 
-All endpoints return JSON. Authentication is via Bearer token (JWT) in the `Authorization` header. Webhook endpoints use signature verification instead.
+All endpoints return JSON. Authentication is via a NextAuth-signed Bearer JWT (HS256, shared `NEXTAUTH_SECRET`) in the `Authorization` header. Webhook endpoints use Twilio's request signature instead. Mutating routes layer `requireRole(...)` on top — see each endpoint for which roles are accepted.
 
 ## Webhooks (External)
 
@@ -176,15 +176,28 @@ Resolve a ticket with an optional resolution summary. The summary feeds the know
 
 ### POST /api/tickets/:id/notes
 
-Add an internal note visible only to the US team (not sent to the agent).
+Add an internal note visible only to the US team (not sent to the agent). Supports `@-mention` syntax — IDs in `mentions` are extracted from the body and stored alongside the note.
 
 **Request body:**
 ```json
 {
-  "text": "This looks similar to the cache corruption issue from last week. Checking if it's the same root cause.",
-  "authorId": "internal-user-uuid"
+  "text": "@alice This looks similar to the cache corruption issue from last week. Checking if it's the same root cause.",
+  "authorId": "internal-user-uuid",
+  "mentions": ["internal-user-uuid-alice"]
 }
 ```
+
+### POST /api/tickets/:id/suggest-replies
+
+Returns three Claude Haiku-drafted reply candidates (direct / empathetic / investigative) for the operator to pick from. Returns `200` with an empty list if Claude is unavailable so the dashboard hides the panel rather than breaking. See `docs/AI_USAGE.md §2.3`.
+
+### POST /api/tickets/outreach
+
+Operator-initiated outbound message to an agent who has no open ticket (or no prior conversation). Creates a ticket as needed and sends the first message via Twilio.
+
+### DELETE /api/tickets/:id
+
+Soft-delete a ticket (admin only). Hides the ticket from list/board surfaces; retained for audit.
 
 ## Incidents
 
@@ -227,33 +240,9 @@ Update incident status, link/unlink tickets, add root cause notes.
 }
 ```
 
-### POST /api/incidents/:id/broadcast
+### POST /api/incidents/:id/broadcast · POST /api/incidents/:id/resolve · POST /api/incidents/:id/to-article
 
-Send a message to all agents linked to this incident. Translated per agent's language.
-
-**Request body:**
-```json
-{
-  "message": "We've identified the issue and are deploying a fix. Your app should return to normal within the next hour."
-}
-```
-
-### POST /api/incidents/:id/resolve
-
-Resolve the incident and optionally bulk-resolve all linked tickets.
-
-**Request body:**
-```json
-{
-  "resolutionNotes": "Rolled back v2.3 migration. Hotfix deployed in v2.3.1.",
-  "resolveLinkedTickets": true,
-  "ticketResolutionMessage": "The issue has been fixed. Please restart your app to get the update."
-}
-```
-
-### POST /api/incidents/:id/to-article
-
-Convert the incident's post-mortem into a knowledge base draft article.
+Planned but not yet implemented. Lifecycle transitions today go through `PATCH /api/incidents/:id` with `{ status: "resolved" }` (which stamps `resolvedAt`). Broadcasting to all linked agents means responding ticket-by-ticket. The post-mortem-to-KB shortcut piggybacks on the same kb-drafter pipeline that runs on ticket resolution.
 
 ## Knowledge Base
 
@@ -281,13 +270,15 @@ Similarity search. Used internally by the bot and dashboard.
 
 ### POST /api/knowledge/:id/approve
 
-Move a draft article to active status. It becomes available to the bot and dashboard suggestions.
+Move a draft article to active status. Restricted to `admin`, `support`, `operations`. Drafts are created by the `kb-drafter` Claude pipeline (with the `kb-indexer` mechanical fallback) whenever a ticket resolves with a non-empty `resolutionSummary`.
 
 ### POST /api/knowledge/:id/archive
 
-Archive an article. Removes it from active suggestions.
+Archive an article. Removes it from active suggestions. Same role restrictions as approve.
 
 ## Bot
+
+> Not yet implemented. The data model exists (`BotConversation`, `DecisionTree`) but no routes are wired up. Inbound messages flow straight to the ticket pipeline today.
 
 ### GET /api/bot/decision-trees
 
@@ -348,7 +339,15 @@ List agents with search and filtering.
 
 Agent profile with ticket history, bot conversation history, and connectivity status.
 
+## Users
+
+### GET /api/users
+
+List internal users. Used by the ticket drawer's assignee dropdown and the `@-mention` autocomplete. Lightweight `{ id, name, email, role }` shape.
+
 ## Analytics
+
+> Not yet implemented. The endpoints below are reserved for future work; nothing under `/api/analytics/*` exists in the shipped API today.
 
 ### GET /api/analytics/volume
 
@@ -381,6 +380,8 @@ Regional connectivity health, delivery delays, outage history. Haiti/DRC specifi
 Ticket categories with high volume but no matching knowledge base articles.
 
 ## Admin
+
+> Not yet implemented. Notification routes (Slack), clustering windows, bot config, and the translation glossary are configured via env vars and code constants today (see `packages/shared/src/index.ts`).
 
 ### GET/PUT /api/settings/notifications
 

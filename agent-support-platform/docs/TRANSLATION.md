@@ -39,35 +39,37 @@ The translation system sits transparently between agents and the US team, allowi
 
 ## Translation Provider
 
-### Google Cloud Translation API v3 (Advanced)
+### Anthropic Claude Haiku 4.5 (shipped)
 
-The primary translation provider. Chosen because it has the best commercial support for Haitian Creole.
+The primary (and only) translation provider today is Claude Haiku (`claude-haiku-4-5-20251001`), called from `apps/api/src/integrations/translation.ts` → `translateWithClaude`. Same vendor as classification, reply drafts, incident summaries, and KB drafts — one Anthropic dependency for all five AI surfaces.
+
+The original plan was Google Cloud Translation v3 Advanced (best commercial Haitian Creole support, custom glossary upload). Claude Haiku turned out to handle the language pairs well enough that the second-vendor cost wasn't justified: median 0.92 self-reported confidence on inbound Creole, 20/20 pass rate on domain-term preservation in the qualitative review (see `docs/PERFORMANCE.md §6`). Glossary-style rules ("preserve product/branch names, error strings, and numbers literally") live in the prompt today.
 
 **Setup:**
 
-1. Create a Google Cloud project.
-2. Enable the Cloud Translation API.
-3. Create a service account with `roles/cloudtranslate.user`.
-4. Download the service account key JSON.
-5. Set `GOOGLE_APPLICATION_CREDENTIALS` to the path of the key file.
-6. Set `GOOGLE_CLOUD_PROJECT_ID` in your `.env`.
-7. Set `USE_REAL_TRANSLATION=true`.
+1. Set `ANTHROPIC_API_KEY` in `apps/api/.env`.
+2. Set `USE_REAL_TRANSLATION=true`.
+
+That's it — no service account, no project ID, no glossary upload step.
+
+### Short-circuit paths (skip the LLM entirely)
+
+1. **Outbound English-to-English:** when the conversation's target language is English, the operator's typed message is sent verbatim. Avoids a Claude rewrite of an already-English support script.
+2. **Inbound likely-English:** the conservative `isLikelyEnglish` heuristic (`apps/api/src/services/language-detection.ts`) pre-checks inbound text. If it has no accented Latin letters, no Creole / Spanish / French stopwords, and at least one English function word, `translatedText = originalText` and the LLM call is skipped.
 
 ### Development Stub
 
-When `USE_REAL_TRANSLATION` is not set, the system uses a stub translator that:
+When `USE_REAL_TRANSLATION=false` (default in local dev) the system uses `translateStub`, which returns the input text unchanged in <1 ms. The dashboard composer's "Sent. Translated as:" toast only renders when the translation actually changed the text, so the stub flow shows a simple "Sent." This lets you develop and test the full pipeline with zero AI API calls.
 
-- Detects language using simple keyword heuristics (checks for common Creole, Spanish, and French words).
-- Passes through the original text with a `[ht→en]` prefix.
-- Returns a confidence score of 0.85.
+### Swap path
 
-This lets you develop and test the full pipeline without a Google Cloud account.
+The `translateMessage()` interface in `translation.ts` is provider-agnostic. Wiring up Google Cloud Translation v3 — or DeepL as a secondary engine for fr / es — is a single-file change; nothing downstream knows which engine ran.
 
-## Custom Glossary
+## Custom Glossary (planned)
 
-The glossary is the most important factor in translation quality for this project. Without it, Google Translate will mishandle domain-specific terms.
+A formal custom-glossary path is not built today — domain-term preservation is handled by prompt instruction. The sections below document the planned glossary surface for when prompt-only handling stops being good enough or when the platform migrates to Google Cloud Translation. Track regressions on `Message.translationConfidence` and the dashboard's edit-translation flow to decide when to invest here.
 
-### What Needs Glossary Entries
+### What Would Need Glossary Entries
 
 | Term | Context | Why It Matters |
 |---|---|---|

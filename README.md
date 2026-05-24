@@ -1,6 +1,6 @@
-# Agent Support Platform
+# Nclusion Field Agent Support
 
-A real-time support bridge connecting 1,000+ field agents across Haiti, Dominican Republic, and the Democratic Republic of Congo with a US-based operations and engineering team. Agents report issues through WhatsApp in their native language; the US team manages everything from an English-language web dashboard. Translation, classification, and routing happen transparently in between.
+A real-time support bridge from Nclusion connecting 1,000+ field agents across Haiti, Dominican Republic, and the Democratic Republic of Congo with a US-based operations and engineering team. Agents report issues through WhatsApp in their native language; the US team manages everything from an English-language web dashboard. Translation, classification, and routing happen transparently in between.
 
 **Live deploys** on Railway:
 
@@ -21,11 +21,13 @@ Meet agents where they already are (WhatsApp) and give the US team a purpose-bui
 
 - **WhatsApp ↔ Dashboard bridge** with transparent real-time translation
 - **Five Claude Haiku surfaces:** translation, classification, AI-suggested reply drafts, incident summaries, and KB article drafts — see [AI_USAGE.md](agent-support-platform/docs/AI_USAGE.md)
-- **Front-style three-pane Inbox** (sidebar · conversation list · persistent detail) with @-mentions on internal notes
-- **Automatic incident clustering** — detects when 3+ tickets in the same country and category arrive within 30 minutes
-- **Knowledge base** that learns from every resolved ticket and suggests fixes on new ones
-- **Real-time updates** via Socket.IO — new tickets, status changes, and assignments appear without refresh
-- **Haiti / DRC connectivity awareness** — extended SLAs, delivery tracking, per-country message length caps for 2G networks
+- **Three-pane Inbox** (sidebar · conversation list · ticket drawer overlay) with @-mentions on internal notes. The drawer is a portaled modal with a frosted-glass panel and works from the inbox, kanban, and list views alike.
+- **Automatic incident clustering** — detects when 3+ tickets in the same country and category arrive within 30 minutes; each cluster has a dedicated `/incidents/[id]` page with lifecycle controls (detected → confirmed → mitigating → resolved), editable root cause + resolution notes, and a contributing-tickets timeline
+- **Nav badges** — rose badge next to "Incidents" counts active incidents; slate badge next to "Tickets" counts unresolved tickets. Both refresh on the `ticket:changed` Socket.IO event.
+- **Knowledge base** that learns from every resolved ticket (kb-drafter → kb-indexer pipeline with mechanical fallback) and suggests fixes on new ones; `/knowledge` exposes draft / active / archived states with an Approve action that promotes drafts. A `scripts/seed-kb-articles.ts` seed exists for demos.
+- **Bilingual toggle** in the page header — default off shows English only; on swaps to the original agent language (direction-aware: inbound originals, outbound translations).
+- **Real-time updates** via Socket.IO — `ticket:changed` event on every mutation drives nav badges, open drawers, and conversation lists without refresh
+- **Haiti / DRC connectivity awareness** — extended SLAs, delivery tracking, per-country message length caps for 2G networks. Country labels render as `HT` / `DO` / `CD` monospace chips (no flag emojis).
 - **SLA tracking** with country-specific thresholds and per-ticket SLA rings
 
 ## Quick Start
@@ -103,14 +105,14 @@ agent-support-platform/
 │   │   └── prisma/             # Schema and migrations
 │   └── dashboard/              # Next.js 14 App Router frontend
 │       └── app/
-│           ├── tickets/        # Three-pane Inbox + kanban + list views
-│           ├── incidents/      # Auto-clustered incidents page
-│           ├── knowledge/      # KB article approval workflow
+│           ├── tickets/        # Inbox + kanban + list views; ticket drawer (?ticket=id) overlays on all
+│           ├── incidents/      # /incidents list + /incidents/[id] detail (lifecycle + timeline)
+│           ├── knowledge/      # KB article approval workflow (draft / active / archived)
 │           └── signin/         # NextAuth + Google OAuth
 ├── packages/
 │   └── shared/                 # Shared TS types, constants, SLA configs
 ├── docs/                       # 12 docs files covering PRD compliance
-├── scripts/                    # Fly secrets helpers
+├── scripts/                    # Auth + Slack setup, KB + demo ticket seed scripts
 └── railway.api.json + railway.dashboard.json   # Railway deploy configs
 ```
 

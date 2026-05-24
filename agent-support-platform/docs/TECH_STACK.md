@@ -77,23 +77,23 @@ One Redis instance handles all three. In production, use ElastiCache or MemorySt
 
 ## Translation
 
-### Google Cloud Translation API v3 (Advanced)
+### Anthropic Claude Haiku 4.5
 
-**What:** Google's Translation API with custom glossary support.
+**What:** Claude Haiku (`claude-haiku-4-5-20251001`) handles every translation call. Same single Anthropic dependency as classification, reply drafts, incident summaries, and KB drafts — one vendor for all five AI surfaces.
 
-**Why:** Best commercial support for Haitian Creole among available APIs. The v3 Advanced tier supports custom glossaries, which are critical for domain-specific terms (fintech jargon, product names, lottery terminology, transaction types). Without a glossary, "transfer" might translate to the physical-movement sense rather than the money-transfer sense.
+**Why Haiku and not Google Translate:** The original plan was Google Cloud Translation v3 Advanced with custom glossaries (the only commercial provider with strong Haitian Creole support). In practice Claude Haiku produces faithful translations (median 0.92 confidence on Creole, see `docs/PERFORMANCE.md §6`), keeps product names / error strings literal via prompt instruction, and avoids a second vendor + glossary upload pipeline. Glossary-style overrides can move into the prompt if specific terms regress.
 
-**Why not DeepL:** No Haitian Creole support. DeepL is superior for French ↔ English and Spanish ↔ English quality, so it could be used as a secondary engine for DR and DRC agents. But maintaining two translation providers adds complexity for marginal quality improvement.
+**Direction-aware behavior:** Outbound English-to-English short-circuits the LLM entirely (operator's wording is sent verbatim). Inbound likely-English messages skip the LLM via the conservative `isLikelyEnglish` heuristic (`apps/api/src/services/language-detection.ts`). See `docs/AI_USAGE.md §2.1` and `docs/PERFORMANCE.md §2` for measurements.
 
-**Why not a custom model:** The data collection burden for training a Creole ↔ English translation model is enormous, and the quality bar set by Google is high. Only pursue this if glossary-tuned Google consistently fails on domain-specific accuracy after 3+ months of glossary refinement.
+**Development mode:** The codebase includes a stub translator (`translateStub`) that returns text unchanged. Set `USE_REAL_TRANSLATION=true` and provide `ANTHROPIC_API_KEY` to call Claude.
 
-**Development mode:** The codebase includes a stub translator that passes text through with a language detection heuristic. Set `USE_REAL_TRANSLATION=true` to switch to Google.
+**Swap path:** The `translateMessage()` interface in `apps/api/src/integrations/translation.ts` is provider-agnostic. Swapping to Google Cloud Translation or DeepL is a single-file change; the rest of the pipeline doesn't know which engine ran.
 
-## Classification
+## Classification + Reply drafts + Incident summaries + KB drafts
 
 ### Claude Haiku (via Anthropic API)
 
-**What:** Claude Haiku (claude-haiku-4-5-20251001) for automated ticket classification.
+**What:** Claude Haiku (`claude-haiku-4-5-20251001`) powers four operator-facing surfaces in addition to translation: classification, AI-suggested reply drafts (`reply-suggester.ts`), incident summaries (`incident-summarizer.ts`), and KB article drafts (`kb-drafter.ts` invoked by `kb-indexer.ts`). All five surfaces are documented end-to-end in `docs/AI_USAGE.md`.
 
 **Why Haiku specifically:** This is a constrained classification task — read a short English message and output structured JSON with category, severity, tags, and product area. Haiku handles this as well as larger models at a fraction of the cost and latency. At 5,000–15,000 classifications per day (1,000+ agents × 5–15 messages each), Haiku keeps costs at single-digit dollars per day.
 
@@ -129,9 +129,17 @@ One Redis instance handles all three. In production, use ElastiCache or MemorySt
 
 **What:** Socket.IO for real-time WebSocket communication between the API and dashboard.
 
-**Why:** The dashboard needs live updates — new tickets appearing, SLA countdowns ticking, incident status changes, delivery receipt updates. Socket.IO handles WebSocket connection management, automatic reconnection, and room-based broadcasting. Backed by Redis pub/sub for multi-instance deployment.
+**Why:** The dashboard needs live updates — new tickets appearing, SLA countdowns ticking, incident status changes, delivery receipt updates, nav badges, open drawers. A single `ticket:changed` event broadcast on every server-side ticket mutation drives the conversation list (`router.refresh()`), open `TicketDrawer` (refetch by id), and the nav-link badge counts. Socket.IO handles WebSocket connection management and automatic reconnection.
+
+**Current scaling constraint:** runs in-process on the API, pinned to a single Railway machine. The Redis adapter migration path for multi-instance is documented in `docs/ARCHITECTURE.md §4.5`; Upstash Redis is already provisioned.
 
 **Swap path:** If we need guaranteed message delivery or higher reliability, migrate to a managed service like Ably or Pusher. The event shapes stay the same; only the transport changes.
+
+### NextAuth + Google OAuth
+
+**What:** NextAuth on the dashboard with Google as the only OAuth provider. The API verifies an HS256-signed JWT (no JWE) using the shared `NEXTAUTH_SECRET`.
+
+**Why:** Internal-tool auth without a separate identity service. Google Workspace gives us the existing operator account graph; NextAuth handles the OAuth dance and session cookies. The HS256 choice (over JWE) keeps the API verifier dependency-free — it's a single `jose` call with the shared secret. Role enforcement (`requireRole("admin", "operations", ...)`) is layered on PATCH / destructive routes.
 
 ## Infrastructure
 
@@ -141,11 +149,13 @@ One Redis instance handles all three. In production, use ElastiCache or MemorySt
 
 **Why:** `docker compose up -d` gives every developer an identical environment regardless of their OS. No "works on my machine" issues with Postgres extensions or Redis versions.
 
-### AWS ECS Fargate / GCP Cloud Run (Production)
+### Railway (Production, shipped)
 
-**What:** Serverless container hosting for the API and worker processes.
+**What:** Two Railway services in one project — `api` (Express + Socket.IO + webhooks) and `dashboard` (Next.js) — both backed by the same GitHub repo and auto-deployed on push to `main`.
 
-**Why:** Auto-scaling, no server management, pay-per-use. The API server and each worker (translate, classify, cluster, notify, bot-handler, kb-indexer, connectivity monitor) run as separate services that scale independently. Fargate/Cloud Run handles this naturally.
+**Why Railway:** One config file per service (`railway.api.json`, `railway.dashboard.json`), generous free tier with always-on machines that don't sleep, and a GitHub integration that needs no extra CI to deploy. Postgres lives on **Neon** (free tier, pooled connection) and Redis on **Upstash** (serverless, pay-per-request). The full setup is in `docs/DEPLOYMENT.md`.
+
+**Future scaling:** if the API needs more than one machine, Socket.IO requires the Redis adapter (see `docs/ARCHITECTURE.md §4.5`). Until then `numReplicas` in `railway.api.json` is pinned to `1`. AWS ECS Fargate / GCP Cloud Run remain valid swap targets if Railway's limits become an issue.
 
 ### GitHub Actions (CI/CD)
 

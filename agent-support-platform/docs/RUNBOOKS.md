@@ -74,23 +74,24 @@ Check in this order:
 ## 3. Translation Service Down
 
 ### Symptoms
-- New tickets show original text but no English translation.
-- Translation confidence shows as null.
-- Errors in the translate worker logs mentioning Google API failures.
+- New tickets show original text with `translatedText` equal to the original (or null).
+- Translation confidence shows as null or 0.
+- API logs show Anthropic API errors (401, 429, 5xx) from `integrations/translation.ts`.
 
 ### Diagnosis
 
-1. Check Google Cloud Console for Translation API status and quota usage.
-2. Check if the service account credentials have expired.
-3. Check if you've hit the API quota limit.
+1. Check the [Anthropic status page](https://status.anthropic.com/).
+2. Check the Railway API logs for the specific Anthropic error code.
+3. Check usage on the Anthropic console — rate limits or quota exhaustion produce 429s.
+4. Confirm `ANTHROPIC_API_KEY` is still set in the Railway API service env vars (a missing key causes silent fallback to the stub).
 
 ### Resolution
 
-- **API outage:** The system should automatically fall back to showing the original text with a "translation unavailable" flag. The US team can use the original text toggle and external translation tools temporarily.
-- **Credentials expired:** Rotate the service account key, update the credentials file, restart the translate worker.
-- **Quota exceeded:** Request a quota increase in Google Cloud Console. Consider implementing request batching if volume is consistently high.
+- **API outage:** The translation call is fail-silent — tickets are still created with the original text, `translatedText` falls back to the input, and the dashboard's bilingual toggle still works. Operators can read the original until Anthropic is back.
+- **Key rotated / revoked:** Rotate `ANTHROPIC_API_KEY` in the Railway API service variables. Railway will restart the service automatically.
+- **Rate-limited:** the same key powers all five Claude surfaces (translation, classification, reply drafts, incident summaries, KB drafts). Request a quota bump if this happens regularly. Translation + classification run in parallel in the pipeline, so one rate-limit hit takes both down for that message — they share back-off semantics.
 
-**Do not block ticket creation on translation failure.** Tickets are still created with the original text. The translation can be retried later or manually provided.
+**Do not block ticket creation on translation failure.** Tickets are still created with the original text. The fail-silent path is intentional.
 
 ---
 

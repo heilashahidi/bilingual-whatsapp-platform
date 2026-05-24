@@ -4,6 +4,44 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-23
+
+### Changed
+- **Rebrand to "Nclusion Field Agent Support".** Dashboard chrome, `<title>`, signin page, and all docs now use the Nclusion brand. Folder names (`agent-support-platform/`, `@asp/*` packages) are unchanged; only user-facing labels and prose moved.
+
+### Added
+
+#### Incident detail page
+- New `/incidents/[id]` route (`apps/dashboard/app/incidents/[id]/`) with lifecycle controls (detected → confirmed → mitigating → resolved), editable root cause and resolution notes, and a contributing-tickets timeline. Updates route through `PATCH /api/incidents/:id` (restricted to admin / operations / engineering).
+
+#### Knowledge base pipeline
+- **`apps/api/src/services/kb-drafter.ts`** — Claude Haiku auto-drafts KB articles from resolved tickets (`{ title, problemDescription, resolutionText, resolutionTextShort, tags }`).
+- **`apps/api/src/services/kb-indexer.ts`** — wraps kb-drafter with a mechanical fallback so a draft always lands even when Claude is unavailable.
+- **`scripts/seed-kb-articles.ts`** — idempotent demo seed (~7 articles, mix of `active` and `draft`) for populating `/knowledge` during demos.
+- **Knowledge tab** (`/knowledge`) surfaces articles with status (draft / active / archived); Approve promotes a draft to active.
+
+#### Incident clusterer
+- **`apps/api/src/services/incident-clusterer.ts`** — auto-groups ≥3 tickets in the same country + category within 30 min into a single incident; subsequent matching tickets within the active window join the existing incident instead of spawning a new one. Incident summaries are rewritten by Claude Haiku as a fire-and-forget pass.
+
+#### Dashboard
+- **Nav badges:** rose badge next to "Incidents" (count of `detected`/`confirmed`); slate badge next to "Tickets" (count of `open` / `in_progress` / `waiting_on_agent`). Both refetch on `ticket:changed` plus a 90 s safety poll.
+- **Page header status breakdown** on `/tickets` — `12 open · 3 in progress · 1 waiting · 7 resolved` instead of a vanity total. Closed is excluded.
+- **Ticket drawer overlay:** drawer mounts in all three views (inbox / kanban / list), portaled to `document.body` with a transparent scrim and frosted-glass panel (`bg-white/85 backdrop-blur-xl`). DetailPane in the inbox view is now a placeholder.
+- **Cluster-closed banner:** when `?incident=X` is set and every ticket in the cluster is closed, a banner shows a "Show closed tickets" link that adds `?closed=1`.
+- **Bilingual toggle semantics:** default is English-only (off). On swaps to the original agent language (inbound originals, outbound translatedText which is the agent-language version).
+- **Country labels:** flag emojis removed across the board; HT / DO / CD render as monospace chips on triage surfaces and as full country names on incident detail.
+- **Deploy verification:** `<meta name="x-app-build">` tag in `layout.tsx`, bumped each deploy as a sanity check that Railway rebuilt the image.
+
+#### Realtime + infra
+- **Socket.IO `ticket:changed`** event now drives nav badges, open drawer refetch, and conversation-list `router.refresh()`. Emitted on every ticket mutation.
+- **Defensive Redis:** BullMQ falls back to inline processing if Upstash Redis is unreachable; tracked via ioredis events so the worker never deadlocks during an outage.
+- **`withPrismaRetry`** wrapper around Prisma calls absorbs Neon's auto-suspend cold start (single retry after 1.5 s).
+
+#### Auth
+- **NextAuth + Google OAuth** on the dashboard; the API verifies an HS256-signed JWT using the shared `NEXTAUTH_SECRET`.
+
+---
+
 ## [0.2.0] - 2026-05-21
 
 ### Added

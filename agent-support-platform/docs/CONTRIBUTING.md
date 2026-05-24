@@ -16,7 +16,7 @@
 ```bash
 # 1. Clone the repo
 git clone <repo-url>
-cd agent-support-platform
+cd bilingual-whatsapp-platform/agent-support-platform
 
 # 2. Install dependencies
 pnpm install
@@ -27,19 +27,20 @@ docker compose up -d
 
 # 4. Configure environment
 cp .env.example apps/api/.env
-# Edit apps/api/.env with your Twilio credentials
+# Edit apps/api/.env with your Twilio + Anthropic credentials
 
 # 5. Initialize database
-cd apps/api
-npx prisma migrate dev --name init
-npx prisma db seed
-cd ../..
+pnpm --filter @asp/api exec prisma migrate deploy
+pnpm --filter @asp/api exec prisma db seed
 
-# 6. Start the dev server
-cd apps/api && pnpm dev
-# You should see: "✓ API server running on http://localhost:3001"
+# 6. Start the API + dashboard (two terminals)
+pnpm --filter @asp/api dev          # API on :3001
+pnpm --filter @asp/dashboard dev    # Dashboard on :3000
 
-# 7. Expose for WhatsApp webhooks (separate terminal)
+# 7. (Optional) Configure NextAuth + Google sign-in locally
+./scripts/set-auth-secrets.sh
+
+# 8. Expose for WhatsApp webhooks (separate terminal)
 ngrok http 3001
 # Copy the https URL and paste it into Twilio Sandbox settings
 ```
@@ -47,8 +48,9 @@ ngrok http 3001
 ### Daily Development
 
 ```bash
-docker compose up -d         # Start Postgres + Redis (if not running)
-cd apps/api && pnpm dev      # Start API with hot reload
+docker compose up -d                # Start Postgres + Redis (if not running)
+pnpm --filter @asp/api dev          # API with hot reload
+pnpm --filter @asp/dashboard dev    # Dashboard with hot reload
 ```
 
 ### Useful Commands
@@ -77,29 +79,53 @@ docker compose down -v               # Stop and delete all data
 ```
 agent-support-platform/
 ├── apps/
-│   ├── api/                          # Backend API server
+│   ├── api/                          # Backend API server (Express + Socket.IO + Prisma)
 │   │   ├── src/
 │   │   │   ├── routes/               # Express route handlers
-│   │   │   │   ├── webhooks.ts       # Twilio WhatsApp webhook
-│   │   │   │   ├── tickets.ts        # Ticket CRUD and responses
-│   │   │   │   └── agents.ts         # Agent directory
+│   │   │   │   ├── webhooks.ts       # Twilio WhatsApp webhook (signature-verified)
+│   │   │   │   ├── tickets.ts        # Ticket CRUD, notes, messages, resolve, suggest-replies
+│   │   │   │   ├── incidents.ts      # Incident list / detail / PATCH lifecycle
+│   │   │   │   ├── knowledge.ts      # KB list / approve / archive
+│   │   │   │   ├── agents.ts         # Agent directory
+│   │   │   │   └── users.ts          # Internal user list (for assignee + @-mention)
 │   │   │   ├── services/             # Core business logic
-│   │   │   │   ├── database.ts       # Prisma client singleton
-│   │   │   │   ├── message-normalizer.ts  # Twilio → RawMessage adapter
-│   │   │   │   └── message-pipeline.ts    # Inbound processing pipeline
+│   │   │   │   ├── database.ts             # Prisma + withPrismaRetry (Neon warmup)
+│   │   │   │   ├── message-normalizer.ts   # Twilio → RawMessage adapter
+│   │   │   │   ├── message-pipeline.ts     # Inbound processing pipeline
+│   │   │   │   ├── incident-clusterer.ts   # 30-min country+category clustering
+│   │   │   │   ├── incident-summarizer.ts  # Claude rewrites incident title + root cause
+│   │   │   │   ├── kb-drafter.ts           # Claude drafts KB articles from resolved tickets
+│   │   │   │   ├── kb-indexer.ts           # Wraps kb-drafter with mechanical fallback
+│   │   │   │   ├── kb-search.ts            # Category+tag overlap scoring (no embeddings yet)
+│   │   │   │   ├── language-detection.ts   # isLikelyEnglish heuristic (skip LLM fast path)
+│   │   │   │   ├── reply-suggester.ts      # Three Claude-drafted reply candidates
+│   │   │   │   ├── realtime.ts             # Socket.IO server + emitTicketEvent
+│   │   │   │   ├── queue.ts + queue-worker.ts # BullMQ + Upstash, inline fallback
+│   │   │   │   ├── audit.ts                # Event log writer
+│   │   │   │   └── notifier.ts             # Slack webhook fan-out
 │   │   │   ├── integrations/         # External service clients
 │   │   │   │   ├── whatsapp.ts       # Twilio send (outbound)
-│   │   │   │   ├── translation.ts    # Google Translate (+ dev stub)
-│   │   │   │   └── classification.ts # Claude Haiku (+ dev stub)
-│   │   │   └── workers/              # Queue workers (TODO)
+│   │   │   │   ├── translation.ts    # Claude Haiku translate (+ dev stub)
+│   │   │   │   └── classification.ts # Claude Haiku classify (+ dev stub)
+│   │   │   └── middleware/
+│   │   │       └── auth.ts           # NextAuth JWT verify (HS256), requireRole
 │   │   └── prisma/
 │   │       ├── schema.prisma         # Database schema
+│   │       ├── migrations/           # Six migrations including notes, indexes, events
 │   │       └── seed.ts               # Test data
-│   └── dashboard/                    # React frontend (TODO)
+│   └── dashboard/                    # Next.js 14 App Router frontend
+│       └── app/
+│           ├── tickets/              # Inbox / kanban / list views + ticket drawer overlay
+│           ├── incidents/            # /incidents list + /incidents/[id] detail
+│           ├── knowledge/            # KB approval workflow
+│           ├── signin/               # NextAuth + Google OAuth
+│           └── _components/          # Nav badges, toasts, realtime indicator, keyboard shortcuts
 ├── packages/
 │   └── shared/                       # Shared types, SLA config, constants
+├── scripts/                          # set-auth-secrets.sh, set-slack-webhook.sh, seed-kb-articles.ts, seed-demo-tickets.ts
 ├── docs/                             # Documentation
-└── infra/                            # Infrastructure as code (TODO)
+├── railway.api.json + railway.dashboard.json   # Railway deploy configs
+└── docker-compose.yml                # Local Postgres (pgvector) + Redis
 ```
 
 ## Coding Standards

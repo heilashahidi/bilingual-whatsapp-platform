@@ -1,4 +1,4 @@
-# Agent Support Platform — Architecture & Implementation Outline
+# Nclusion Field Agent Support — Architecture & Implementation Outline
 
 ## 1. System Overview
 
@@ -556,23 +556,21 @@ SLA deadlines are computed at ticket creation and recalculated if severity chang
 - Internal notes (visible only to US team, not sent to agent).
 - Activity log: status changes, reassignments, reclassifications, SLA events, incident linkage.
 
-**c) Incident View (NEW)**
-- **Incident list:** Active incidents sorted by severity and ticket count. Each row shows title, severity, affected countries, number of linked tickets, time since detection, status.
-- **Incident detail:** 
-  - Map showing affected branches as pins, color-coded by ticket count.
-  - Timeline of when each linked ticket was reported.
-  - Combined conversation view (all linked ticket threads accessible in tabs).
-  - Root cause and resolution notes fields.
-  - "Broadcast" action: send a single update to all affected agents simultaneously (translated per agent's language).
-  - "Resolve incident" action: resolves the incident and optionally bulk-resolves all linked tickets with a shared resolution message.
-- **Incident creation:** Can be auto-created by the clustering engine (see 3.7) or manually created by a US team member who selects tickets to link.
+**c) Incident View**
+- **Incident list:** Active incidents sorted by detection time. Each row shows title, severity, affected countries, ticket count, status. The "Incidents" nav link carries a rose badge with the count of `detected` + `confirmed` incidents.
+- **Incident detail** (`/incidents/[id]`, shipped):
+  - Lifecycle pills (detected → confirmed → mitigating → resolved) — clicking advances `Incident.status` via `PATCH /api/incidents/:id`. Setting `resolved` stamps `resolvedAt`.
+  - Editable root cause and resolution notes fields with dirty-state Save buttons.
+  - Contributing-tickets timeline (each linked ticket as a row with severity, status, agent, branch, and time).
+  - Country names render as `Haiti` / `Dominican Republic` / `DR Congo` — no flag emojis.
+- **Map view, in-tab conversation merge, broadcast, and bulk-resolve are not yet implemented.** Linked tickets are reachable individually from the timeline; broadcasting an update means responding on each ticket today.
+- **Incident creation:** auto-created by the incident-clusterer (`apps/api/src/services/incident-clusterer.ts`). Manual creation is not yet exposed in the UI.
 
-**d) Knowledge Base Manager (NEW)**
-- **Article list:** Searchable, filterable list of all knowledge articles. Columns: title, category, usage count, success rate, status, last updated.
-- **Article editor:** Create/edit articles with problem description, resolution text, category, tags. Preview the auto-translated versions. Toggle active/archived status.
-- **Auto-suggested articles:** A queue of system-generated draft articles (from the knowledge base indexer) waiting for human review and approval.
-- **Decision tree editor:** Visual editor for the WhatsApp bot decision trees. Drag-and-drop node editor with preview of the WhatsApp conversation flow.
-- **Bot performance dashboard:** Resolution rate, deflection rate by issue type, escalation reasons, most/least effective articles and trees.
+**d) Knowledge Base Manager**
+- **`/knowledge`:** lists articles with status (`draft` / `active` / `archived`), category, and usage count. An **Approve** button promotes a draft to `active` via `POST /api/knowledge/:id/approve`; an Archive action retires articles via `POST /api/knowledge/:id/archive`.
+- **Auto-suggested articles:** the `kb-drafter` service (Claude Haiku) plus the `kb-indexer` mechanical fallback land new drafts whenever a ticket is resolved with a `resolutionSummary`. Drafts wait for human approval on the same `/knowledge` tab filtered to `?status=draft`.
+- **Demo seed:** `scripts/seed-kb-articles.ts` populates ~7 articles (mix of active and draft) for demos without needing live Claude runs.
+- **Decision tree editor, similarity-search-based suggestions, and the bot performance dashboard are not yet implemented.** KB similarity ranking today is category + tag overlap (`kb-search.ts`), not embeddings — the `KnowledgeArticle.embedding` column is reserved for a future swap.
 
 **e) Agent Directory**
 - Searchable list of all agents with branch, country, contact info.
@@ -606,19 +604,19 @@ SLA deadlines are computed at ticket creation and recalculated if severity chang
 
 **Purpose:** Automatically detect when multiple agents are reporting the same systemic issue, so the US team can respond to the root cause instead of triaging individual tickets in isolation.
 
-**How it works:**
+**How it works (current implementation in `apps/api/src/services/incident-clusterer.ts`):**
 
-A clustering worker runs on a schedule (every 5 minutes) and on every new ticket creation. It looks for correlations across three dimensions:
+Runs synchronously inside the inbound pipeline on every new ticket creation. Two dimensions today:
 
-1. **Category + Tags:** Tickets with the same category and overlapping tags (e.g., multiple `bug_report` tickets tagged `app_crash`).
-2. **Geography:** Tickets from agents in the same country, region, or branch cluster.
-3. **Time window:** Tickets created within a configurable rolling window (default: 2 hours).
+1. **Category** — exact match on `Ticket.category`.
+2. **Country** — exact match on the agent's country.
 
-**Clustering algorithm:**
+**Clustering algorithm (shipped):**
 
-- When a new ticket is created, the worker queries recent tickets (within the time window) that share the same category.
-- It computes a similarity score based on: tag overlap (Jaccard similarity), geographic proximity (same branch > same region > same country), and temporal density (more tickets in a shorter window = higher score).
-- If the cluster size crosses a threshold (configurable, default: 3 tickets with similarity score > 0.6), the system either creates a new Incident or links the ticket to an existing active incident with matching characteristics.
+- Window: **30 minutes** with a **3-ticket threshold** (`CLUSTER_WINDOW_MINUTES`, `CLUSTER_THRESHOLD`). These constants live at the top of `incident-clusterer.ts` and apply uniformly across HT / DO / CD (the `CLUSTERING_CONFIG` per-country values in `packages/shared` are reserved for the future per-country tunables).
+- If there's an open incident matching the same country + category that detected within the last `INCIDENT_ACTIVE_HOURS = 2`, the new ticket joins it instead of forming a fresh cluster.
+- When the threshold is crossed for the first time, all contributing tickets are linked to a new Incident and a Claude Haiku summary pass (`incident-summarizer.ts`) rewrites the mechanical title and root-cause hypothesis fire-and-forget.
+- Tag overlap / Jaccard similarity / branch-level geography are not used today — clustering is intentionally simple and noisy bias toward "form the incident, let the operator unlink." See §6 risks for the false-positive mitigation.
 
 **Haiti/DRC connectivity-aware clustering:**
 

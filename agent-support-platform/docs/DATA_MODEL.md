@@ -204,9 +204,26 @@ Time-series data for regional connectivity health monitoring.
 | windowStart | DateTime | Start of the measurement window |
 | windowEnd | DateTime | End of the measurement window |
 
+### Note
+
+Internal team-only commentary on a ticket. Not sent to the agent. Added in migration `20260522001854_add_notes`; `@-mention` support added in `20260522192935_add_note_mentions`.
+
+| Column | Type | Description |
+|---|---|---|
+| id | UUID | Primary key |
+| ticketId | FK → Ticket | Parent ticket |
+| authorId | FK → InternalUser? | Who wrote it |
+| body | Text | Markdown / plain text |
+| mentions | String[] | InternalUser IDs `@-mentioned` in the body |
+| createdAt | DateTime | When the note was posted |
+
+### Event
+
+Append-only audit log for ticket state changes (status, severity, assignee, category transitions) plus incident lifecycle events. Added in migration `20260522164558_add_event`. Used by the activity log in the ticket drawer / detail page.
+
 ## Indexes
 
-The following indexes should be added for query performance (add via Prisma migration):
+Shipped in migration `20260522001855_add_indexes_and_unique_whatsapp_id`:
 
 ```prisma
 @@index([agentId, status, createdAt])     // on Ticket: find open tickets by agent
@@ -215,6 +232,8 @@ The following indexes should be added for query performance (add via Prisma migr
 @@index([ticketId, createdAt])            // on Message: conversation thread
 @@index([agentTimestamp])                 // on Message: timeline reconstruction
 @@index([country, region, windowEnd])     // on ConnectivityLog: health queries
+
+@@unique([whatsappMessageId])             // on Message: idempotency on Twilio retries
 ```
 
 ## pgvector Setup

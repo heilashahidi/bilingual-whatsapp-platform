@@ -68,7 +68,7 @@ The bot is designed for conversations that may span hours with long gaps between
 
 **Agent-timestamp clustering:** The clustering engine uses `agentTimestamp` for all time-window calculations. After a connectivity outage resolves, a burst of queued messages may arrive within minutes — but the issues may have occurred over the past 3 hours. Using agent-sent times prevents these bursts from creating phantom incidents.
 
-**Wider time windows:** Haiti and DRC use a 6-hour clustering window (vs 2 hours for DR). This accommodates the fact that agents may be offline for hours and their reports arrive in staggered bursts.
+**Wider time windows (planned, partially shipped):** `packages/shared/src/index.ts` declares a 6-hour window for HT / CD and 2 hours for DO (`CLUSTERING_CONFIG`). The current `incident-clusterer.ts` runs a uniform 30-min window with a 3-ticket threshold for all countries — wiring the per-country values is queued for the next pass.
 
 **Silence detection:** If the system notices zero messages from a region for 30+ minutes during normal operating hours (when it typically receives a steady trickle), it creates a "Connectivity Monitoring" alert. This isn't an incident — it's a heads-up that the silence might mean an outage.
 
