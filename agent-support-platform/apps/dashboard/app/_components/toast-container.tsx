@@ -63,9 +63,10 @@ export function ToastContainer() {
         window.setTimeout(() => {
           setToasts((prev) => prev.filter((t) => t.id !== id));
         }, TOAST_TIMEOUT_MS);
-      } catch {
-        // If the fetch fails, just drop the toast silently — better than
-        // showing an error popup that the user didn't ask for.
+      } catch (err) {
+        // Drop the toast silently — better than an unwanted error
+        // popup — but log so a fetch outage is diagnosable in devtools.
+        console.error("toast-container: fetchTicket failed", err);
       }
     };
 
