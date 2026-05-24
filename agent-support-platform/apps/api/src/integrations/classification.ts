@@ -78,7 +78,9 @@ async function classifyWithLLM(text: string): Promise<ClassificationResult> {
     throw new Error(`Claude API error: ${response.status} ${await response.text()}`);
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as {
+    content?: Array<{ text?: string }>;
+  };
   const content = data.content?.[0]?.text || "";
 
   try {

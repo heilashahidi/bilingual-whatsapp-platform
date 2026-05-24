@@ -62,7 +62,7 @@ import { enqueueInbound, closeQueue } from "./queue";
 import type { RawMessage } from "@asp/shared";
 
 const fakeMessage: RawMessage = {
-  source: "twilio_whatsapp",
+  source: "whatsapp",
   externalId: "SM_test_123",
   agentPhone: "+50937001001",
   textBody: "test",

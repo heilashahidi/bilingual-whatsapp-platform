@@ -16,14 +16,81 @@ interface TranslationResult {
   confidence: number;
 }
 
+// ─── In-memory translation cache ────────────────────────────
+// Same English phrase → same Spanish/Creole/French output. Canned
+// intake prompts, "Your ticket has been resolved", auto-acknowledgments,
+// and operator templates all hit repeatedly — caching cuts the
+// ~300-500ms Claude call to a Map lookup. Cache key is target+text
+// (source is auto-detected by Claude, so the result is target-keyed).
+//
+// LRU bound (1000 entries) keeps memory predictable in a long-running
+// process. Per-entry size dominated by the translated string, so worst
+// case ~2MB (1000 × 2KB messages). TTL avoids serving stale glossary
+// translations after a prompt change.
+const TRANSLATION_CACHE_MAX = 1000;
+const TRANSLATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+type CacheEntry = { result: TranslationResult; expiresAt: number };
+const translationCache = new Map<string, CacheEntry>();
+
+function cacheKey(text: string, targetLanguage: string): string {
+  return `${targetLanguage}::${text}`;
+}
+
+function cacheGet(text: string, targetLanguage: string): TranslationResult | null {
+  const key = cacheKey(text, targetLanguage);
+  const entry = translationCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt < Date.now()) {
+    translationCache.delete(key);
+    return null;
+  }
+  // LRU: re-insert to move to most-recent
+  translationCache.delete(key);
+  translationCache.set(key, entry);
+  return entry.result;
+}
+
+function cacheSet(text: string, targetLanguage: string, result: TranslationResult): void {
+  const key = cacheKey(text, targetLanguage);
+  translationCache.set(key, { result, expiresAt: Date.now() + TRANSLATION_CACHE_TTL_MS });
+  // Evict oldest if over bound (Map preserves insertion order).
+  if (translationCache.size > TRANSLATION_CACHE_MAX) {
+    const oldest = translationCache.keys().next().value;
+    if (oldest !== undefined) translationCache.delete(oldest);
+  }
+}
+
+export function _resetTranslationCacheForTests(): void {
+  translationCache.clear();
+}
+
+async function translateCached(
+  text: string,
+  targetLanguage: string
+): Promise<TranslationResult> {
+  const hit = cacheGet(text, targetLanguage);
+  if (hit) {
+    console.log(`  ⚡ Translation cache hit (${targetLanguage}, ${text.length} chars)`);
+    return hit;
+  }
+  const result =
+    process.env.USE_REAL_TRANSLATION === "true"
+      ? await translateWithClaude(text, targetLanguage)
+      : await translateStub(text, targetLanguage);
+  // Only cache confident successes — a stub fallback or low-confidence
+  // result shouldn't poison future lookups.
+  if (result.confidence >= 0.7) {
+    cacheSet(text, targetLanguage, result);
+  }
+  return result;
+}
+
 export async function translateMessage(
   text: string,
   targetLanguage: string
 ): Promise<TranslationResult> {
-  if (process.env.USE_REAL_TRANSLATION === "true") {
-    return translateWithClaude(text, targetLanguage);
-  }
-  return translateStub(text, targetLanguage);
+  return translateCached(text, targetLanguage);
 }
 
 /**
@@ -34,10 +101,7 @@ export async function translateResponse(
   text: string,
   targetLanguage: string
 ): Promise<TranslationResult> {
-  if (process.env.USE_REAL_TRANSLATION === "true") {
-    return translateWithClaude(text, targetLanguage);
-  }
-  return translateStub(text, targetLanguage);
+  return translateCached(text, targetLanguage);
 }
 
 // ─── Claude Haiku translation ───────────────────────────────
@@ -104,7 +168,9 @@ ${text}`;
     return translateStub(text, targetLanguage);
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as {
+    content?: Array<{ text?: string }>;
+  };
   const content = data.content?.[0]?.text || "";
 
   try {
@@ -119,44 +185,6 @@ ${text}`;
     console.error("  ✗ Failed to parse Claude translation output:", content);
     return translateStub(text, targetLanguage);
   }
-}
-
-// ─── Google Cloud Translation (alternative — not currently used) ──────
-
-async function translateWithGoogle(
-  text: string,
-  targetLanguage: string
-): Promise<TranslationResult> {
-  // Dynamic import so it doesn't fail if the package isn't installed
-  const { TranslationServiceClient } = await import("@google-cloud/translate").then(
-    (m) => m.v3
-  );
-
-  const client = new TranslationServiceClient();
-  const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID!;
-  const location = "global";
-  const parent = `projects/${projectId}/locations/${location}`;
-
-  const [response] = await client.translateText({
-    parent,
-    contents: [text],
-    targetLanguageCode: targetLanguage,
-    // Custom glossary for fintech/product terms
-    // glossaryConfig: {
-    //   glossary: `projects/${projectId}/locations/${location}/glossaries/agent-support-glossary`,
-    // },
-  });
-
-  const translation = response.translations?.[0];
-  if (!translation) {
-    throw new Error("No translation returned from Google");
-  }
-
-  return {
-    translatedText: translation.translatedText || text,
-    detectedLanguage: translation.detectedLanguageCode || "unknown",
-    confidence: 0.9, // Google doesn't return a confidence score; default high
-  };
 }
 
 // ─── Development stub ───────────────────────────────────────

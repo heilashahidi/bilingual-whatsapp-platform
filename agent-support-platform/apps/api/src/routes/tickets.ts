@@ -6,6 +6,7 @@ import { indexResolvedTicket } from "../services/kb-indexer";
 import { recordEvent } from "../services/audit";
 import { notifyMention } from "../services/notifier";
 import { sendAgentResponse } from "../integrations/whatsapp";
+import { enqueueOutbound } from "../services/outbound-queue";
 import { suggestReplies } from "../services/reply-suggester";
 import { requireRole } from "../middleware/auth";
 
@@ -182,17 +183,17 @@ router.post("/:id/messages", async (req: Request, res: Response) => {
   const targetLanguage =
     lastInbound?.originalLanguage || ticket.agent.preferredLanguage;
 
+  // Persist the message immediately as deliveryStatus='pending', then
+  // hand the actual Twilio send off to the outbound queue. The
+  // dashboard renders the pending row optimistically; the queue worker
+  // updates deliveryStatus to 'sent' (with a SID) or 'failed' (with a
+  // reason) and emits a socket event so the UI converges.
+  //
+  // Why we don't await translation+send here: every ms spent on this
+  // request handler is a ms the operator can't move to the next
+  // ticket, and Twilio failures on flaky carrier legs are exactly
+  // what BullMQ's retry+backoff is designed for.
   try {
-    // Translate (if needed) and send via WhatsApp. sendAgentResponse
-    // short-circuits translation when targetLanguage === "en".
-    const { messageSid, translatedText } = await sendAgentResponse(
-      ticket.agent.phoneNumber,
-      text,
-      targetLanguage,
-      ticket.agent.country
-    );
-
-    // Store the outbound message
     const message = await prisma.message.create({
       data: {
         ticketId: ticket.id,
@@ -201,13 +202,16 @@ router.post("/:id/messages", async (req: Request, res: Response) => {
         senderId,
         originalText: text,
         originalLanguage: "en",
-        translatedText,
+        // translatedText is filled in by the worker after translation.
+        // Pre-fill with the English text so the dashboard has something
+        // to render in the pending state.
+        translatedText: text,
         contentType: "text",
-        whatsappMessageId: messageSid,
+        deliveryStatus: "pending",
+        whatsappMessageId: null,
       },
     });
 
-    // Update ticket status
     await prisma.ticket.update({
       where: { id: ticket.id },
       data: {
@@ -225,10 +229,21 @@ router.post("/:id/messages", async (req: Request, res: Response) => {
 
     emitTicketEvent("message", ticket.id);
 
-    res.json({ message, translatedText });
+    // Fire-and-forget enqueue — the function handles its own fallback
+    // to inline processing if Redis is unavailable.
+    enqueueOutbound({
+      messageId: message.id,
+      ticketId: ticket.id,
+      agentPhone: ticket.agent.phoneNumber,
+      agentCountry: ticket.agent.country,
+      englishText: text,
+      targetLanguage,
+    }).catch((err) => console.error("  ✗ enqueueOutbound failed:", err));
+
+    res.json({ message });
   } catch (error) {
-    console.error("Failed to send response:", error);
-    res.status(500).json({ error: "Failed to send message" });
+    console.error("Failed to queue outbound message:", error);
+    res.status(500).json({ error: "Failed to queue message" });
   }
 });
 

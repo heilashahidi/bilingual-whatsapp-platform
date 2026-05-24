@@ -110,6 +110,21 @@ enum ContentType {
   document
 }
 
+// Outbound delivery lifecycle. Inbound messages skip this (they're
+// "delivered" by definition once stored).
+//   pending   — queued for Twilio send, not yet attempted or in-flight
+//   sent      — Twilio accepted the message (we have a SID)
+//   delivered — WhatsApp confirmed device delivery (status webhook)
+//   read      — recipient opened the message (status webhook)
+//   failed    — all retry attempts exhausted; deliveryError holds why
+enum DeliveryStatus {
+  pending
+  sent
+  delivered
+  read
+  failed
+}
+
 model Ticket {
   id                   String          @id @default(uuid())
   agentId              String
@@ -207,12 +222,15 @@ model Message {
   deliveryDelay          Int?             // Delta in seconds (computed)
   // Outbound delivery tracking
   whatsappMessageId      String?  @unique // WhatsApp message ID — unique for idempotency
+  deliveryStatus         DeliveryStatus   @default(sent) // Lifecycle for outbound queue path
+  deliveryError          String?          // Last error if status=failed (truncated)
   deliveredAt            DateTime?        // When delivery receipt received
   readAt                 DateTime?        // When read receipt received
   createdAt              DateTime         @default(now())
 
   @@index([ticketId, createdAt])
   @@index([agentTimestamp])
+  @@index([deliveryStatus, createdAt])
 }
 
 // ─── Internal Users ─────────────────────────────────────────

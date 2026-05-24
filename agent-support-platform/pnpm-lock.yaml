@@ -14,6 +14,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@asp/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@prisma/client':
         specifier: ^5.20.0
         version: 5.22.0(prisma@5.22.0)
@@ -51,6 +54,9 @@ importers:
       '@types/express':
         specifier: ^4.17.21
         version: 4.17.25
+      '@types/express-serve-static-core':
+        specifier: ^4.19.8
+        version: 4.19.8
       '@types/jsonwebtoken':
         specifier: ^9.0.7
         version: 9.0.10

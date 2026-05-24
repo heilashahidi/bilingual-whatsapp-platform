@@ -8,6 +8,33 @@ const getClient = () => {
   return twilio(accountSid, authToken);
 };
 
+// Twilio's SDK has no per-request timeout knob and falls back to
+// Node's ~2 minute default — long enough that a stalled connection
+// would burn a worker slot for ages on flaky third-world links.
+// 10s covers a generous WhatsApp Cloud round-trip even from a slow
+// Twilio region; anything longer should be retried by the outbound
+// queue rather than waited on inline.
+const TWILIO_SEND_TIMEOUT_MS = 10_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 /**
  * Send a WhatsApp message to an agent via Twilio.
  *
@@ -51,7 +78,11 @@ export async function sendWhatsAppMessage(
     messageParams.mediaUrl = [options.mediaUrl];
   }
 
-  const message = await client.messages.create(messageParams);
+  const message = await withTimeout(
+    client.messages.create(messageParams),
+    TWILIO_SEND_TIMEOUT_MS,
+    "Twilio send"
+  );
   console.log(`  ✓ Sent WhatsApp message ${message.sid} to ${toPhone}`);
 
   return message.sid;

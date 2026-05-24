@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Nclusion Field Agent Support — Project Overview</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --panel: #ffffff;
+    --ink: #18181b;
+    --ink-soft: #3f3f46;
+    --muted: #71717a;
+    --line: #e4e4e7;
+    --line-soft: #f1f1ef;
+    --accent: #0f766e;
+    --accent-soft: #ccfbf1;
+    --warn: #b45309;
+    --warn-soft: #fef3c7;
+    --rose: #be123c;
+    --rose-soft: #ffe4e6;
+    --violet: #6d28d9;
+    --violet-soft: #ede9fe;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 880px; margin: 0 auto; padding: 64px 28px 96px; }
+
+  /* hero */
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  h1 {
+    font-size: 44px;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    margin: 8px 0 16px;
+    font-weight: 700;
+  }
+  .lede {
+    font-size: 19px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    margin: 0 0 28px;
+    max-width: 680px;
+  }
+  .live {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 24px 0 40px;
+  }
+  .live a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--ink);
+    font-size: 14px;
+    font-weight: 500;
+    transition: border-color 0.15s;
+  }
+  .live a:hover { border-color: var(--accent); }
+  .live a .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 0 3px #22c55e22;
+  }
+  .live a .label { color: var(--muted); }
+
+  /* sections */
+  section { margin: 56px 0; }
+  h2 {
+    font-size: 26px;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    margin: 0 0 8px;
+    font-weight: 700;
+  }
+  h2 .num {
+    display: inline-block;
+    width: 28px;
+    color: var(--muted);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .subhead {
+    font-size: 15px;
+    color: var(--muted);
+    margin: 0 0 24px;
+    padding-left: 28px;
+  }
+  h3 {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 24px 0 6px;
+    color: var(--ink);
+  }
+  p { margin: 0 0 14px; }
+
+  /* the problem call-out */
+  .problem {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--rose);
+    border-radius: 8px;
+    padding: 24px 28px;
+  }
+  .problem p:last-child { margin: 0; }
+
+  /* numbered list of ideas */
+  .ideas { display: grid; gap: 14px; }
+  .idea {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 14px;
+    align-items: start;
+  }
+  .idea .n {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 50%;
+    width: 28px; height: 28px;
+    display: grid; place-items: center;
+    font-size: 13px;
+    margin-top: 2px;
+  }
+  .idea .body strong {
+    font-weight: 600;
+    color: var(--ink);
+    display: block;
+    margin-bottom: 2px;
+  }
+  .idea .body { color: var(--ink-soft); }
+
+  /* feature grid */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 18px 20px;
+  }
+  .card h4 {
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .card p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+  }
+  .card .pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--violet-soft);
+    color: var(--violet);
+    margin-bottom: 8px;
+  }
+  .card.warn .pill { background: var(--warn-soft); color: var(--warn); }
+  .card.rose .pill { background: var(--rose-soft); color: var(--rose); }
+  .card.teal .pill { background: var(--accent-soft); color: var(--accent); }
+
+  /* flow / pipeline */
+  .flow {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 24px;
+    overflow-x: auto;
+  }
+  .flow ol {
+    list-style: none;
+    counter-reset: step;
+    padding: 0;
+    margin: 0;
+  }
+  .flow li {
+    counter-increment: step;
+    position: relative;
+    padding: 10px 0 10px 40px;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: 14.5px;
+    color: var(--ink-soft);
+  }
+  .flow li:last-child { border-bottom: 0; }
+  .flow li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 12px;
+    width: 24px;
+    height: 24px;
+    background: var(--ink);
+    color: white;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .flow li b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  /* stats grid */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin: 16px 0;
+  }
+  @media (max-width: 640px) { .stats { grid-template-columns: 1fr 1fr; } }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 18px;
+  }
+  .stat .num {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .lbl {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  /* tech table */
+  table.tech {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14.5px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  table.tech th, table.tech td {
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+  table.tech th {
+    font-weight: 600;
+    color: var(--muted);
+    background: var(--bg);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  table.tech tr:last-child td { border-bottom: 0; }
+  table.tech td:first-child { width: 32%; font-weight: 600; }
+  table.tech td .why { color: var(--muted); font-size: 13.5px; display: block; margin-top: 2px; }
+
+  /* docs list */
+  .docs { display: grid; gap: 8px; }
+  .doc {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: 14px;
+  }
+  .doc:last-child { border-bottom: 0; }
+  .doc .name { font-weight: 600; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+  .doc .desc { color: var(--ink-soft); }
+  @media (max-width: 640px) {
+    .doc { grid-template-columns: 1fr; gap: 2px; }
+  }
+
+  /* footer */
+  footer {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  /* country chips, used inline */
+  .chip {
+    display: inline-block;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--line-soft);
+    color: var(--ink-soft);
+    margin: 0 2px;
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+
+  <!-- ── Hero ───────────────────────────────────────── -->
+  <div class="eyebrow">Nclusion · Field Agent Support</div>
+  <h1>A WhatsApp bridge between 1,000+ field agents and a US support team — with translation built into the middle.</h1>
+  <p class="lede">
+    Agents in Haiti, the Dominican Republic, and the DR Congo report issues in their own language
+    on WhatsApp. The US team reads, triages, and replies in English on a web dashboard.
+    Translation, sorting, and routing happen invisibly in between.
+  </p>
+
+  <div class="live">
+    <a href="https://nclusion-api.up.railway.app" target="_blank" rel="noopener">
+      <span class="dot"></span>
+      <span><span class="label">API ·</span> nclusion-api.up.railway.app</span>
+    </a>
+    <a href="https://nclusion-inbox-production.up.railway.app" target="_blank" rel="noopener">
+      <span class="dot"></span>
+      <span><span class="label">Dashboard ·</span> nclusion-inbox-production.up.railway.app</span>
+    </a>
+  </div>
+
+  <!-- ── Problem ────────────────────────────────────── -->
+  <section>
+    <h2><span class="num">01</span>The problem</h2>
+    <p class="subhead">Why this product needed to exist in the first place.</p>
+
+    <div class="problem">
+      <p>
+        Nclusion runs branch operations through 1,000+ field agents spread across three countries.
+        When something breaks at a branch — a crashed app, a failed transaction, a connectivity issue —
+        there's no real channel for the agent to flag it. So they don't, or they message someone's personal
+        WhatsApp, or it surfaces days later through a side chat.
+      </p>
+      <p>
+        Meanwhile the US engineering and operations teams are flying blind. They can't see how often issues
+        happen, which branches are affected, or whether 50 agents are all hitting the same bug at the same time.
+        Even when something does get escalated, the Creole-to-English language gap stretches every back-and-forth
+        from minutes into hours.
+      </p>
+    </div>
+  </section>
+
+  <!-- ── Solution / big ideas ──────────────────────── -->
+  <section>
+    <h2><span class="num">02</span>The big idea</h2>
+    <p class="subhead">Meet agents where they already are. Give the US team a real workspace. Make the language gap disappear.</p>
+
+    <div class="ideas">
+      <div class="idea">
+        <div class="n">1</div>
+        <div class="body">
+          <strong>WhatsApp is the front door.</strong>
+          Agents don't install anything new — they just message the same WhatsApp number they'd message
+          a colleague. WhatsApp is also the only thing that works reliably on a Haitian 2G connection.
+        </div>
+      </div>
+      <div class="idea">
+        <div class="n">2</div>
+        <div class="body">
+          <strong>A purpose-built inbox for the US team.</strong>
+          Not a Slack channel. Not a spreadsheet. A real shared inbox with tickets, statuses, SLAs, and
+          assignments — built like Front or Intercom, but tuned for this exact workflow.
+        </div>
+      </div>
+      <div class="idea">
+        <div class="n">3</div>
+        <div class="body">
+          <strong>Translation is invisible, in both directions.</strong>
+          Creole, French, and Spanish come in → English appears on the dashboard. The US team types
+          English → the agent receives it in their language. Neither side has to think about it.
+        </div>
+      </div>
+      <div class="idea">
+        <div class="n">4</div>
+        <div class="body">
+          <strong>Patterns surface automatically.</strong>
+          If three agents in Haiti all report the same kind of problem within 30 minutes, the system
+          notices and creates an "incident" — so the team can respond to the root cause instead of
+          triaging the same ticket three times.
+        </div>
+      </div>
+      <div class="idea">
+        <div class="n">5</div>
+        <div class="body">
+          <strong>Every resolved ticket becomes institutional memory.</strong>
+          When a ticket closes, the system drafts a knowledge-base article from how it was solved.
+          The next agent who reports the same issue gets a head-start instead of starting from zero.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── How it works ──────────────────────────────── -->
+  <section>
+    <h2><span class="num">03</span>The life of one message</h2>
+    <p class="subhead">What happens between an agent pressing "send" and a US operator seeing the ticket.</p>
+
+    <div class="flow">
+      <ol>
+        <li>Agent sends a WhatsApp message in Creole, French, or Spanish.</li>
+        <li>Twilio delivers it to our API as a <b>webhook</b>. The API responds instantly so WhatsApp isn't blocked.</li>
+        <li>The message is <b>de-duplicated</b> so a Twilio retry can't create a phantom ticket.</li>
+        <li>We look up (or auto-create) the <b>agent</b> by phone number — country comes from the country code.</li>
+        <li>Claude Haiku <b>translates</b> the message to English and <b>classifies</b> it (category, severity, tags) — in parallel, ~1 second total.</li>
+        <li>We <b>find or create a ticket</b> — a new message from an open conversation appends; otherwise we open a fresh one.</li>
+        <li>The knowledge base <b>suggests past resolutions</b> for the same kind of problem.</li>
+        <li>If three similar tickets have landed in the same country in 30 minutes, we <b>group them into an incident</b>.</li>
+        <li>Critical and high-severity tickets fire a <b>Slack notification</b>.</li>
+        <li>Every open dashboard refreshes over <b>Socket.IO</b> — no one has to hit reload.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ── Features ──────────────────────────────────── -->
+  <section>
+    <h2><span class="num">04</span>What's actually in the product</h2>
+    <p class="subhead">The features the US team uses every day.</p>
+
+    <div class="grid">
+      <div class="card teal">
+        <div class="pill">Inbox</div>
+        <h4>Three-pane shared inbox</h4>
+        <p>Sidebar, conversation list, and a ticket drawer that overlays on top — works from the inbox, kanban, and list views identically. @-mentions on internal notes.</p>
+      </div>
+      <div class="card teal">
+        <div class="pill">Bilingual</div>
+        <h4>One-click language toggle</h4>
+        <p>Default view is English-only. Flip the toggle to see what the agent actually wrote — useful when the translation feels off or when you want to copy a product name verbatim.</p>
+      </div>
+      <div class="card rose">
+        <div class="pill">Incidents</div>
+        <h4>Auto-detected outages</h4>
+        <p>When three or more tickets in the same country and category hit within 30 minutes, the system opens an incident with a lifecycle (detected → confirmed → mitigating → resolved) and a timeline of contributing tickets.</p>
+      </div>
+      <div class="card warn">
+        <div class="pill">Knowledge</div>
+        <h4>Self-writing knowledge base</h4>
+        <p>Every resolved ticket gets drafted into a KB article by Claude. The team approves drafts on the <code>/knowledge</code> tab. New tickets see relevant past fixes pinned in the sidebar.</p>
+      </div>
+      <div class="card">
+        <div class="pill">Realtime</div>
+        <h4>Live everything</h4>
+        <p>New ticket arrives → it pops in at the top. SLA timer hits 30 minutes → it turns red. Another teammate resolves the ticket you're looking at → your view updates. No refresh button needed.</p>
+      </div>
+      <div class="card">
+        <div class="pill">SLA</div>
+        <h4>Country-aware SLAs</h4>
+        <p>Haiti and DRC get 1.5× the standard SLA window because the agent's network adds real delay. The clock starts when the agent <em>sent</em> the message, not when our server happened to receive it.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── AI surfaces ───────────────────────────────── -->
+  <section>
+    <h2><span class="num">05</span>Where AI shows up</h2>
+    <p class="subhead">Five places Claude Haiku runs in production — each one fails gracefully if the API is down.</p>
+
+    <div class="grid">
+      <div class="card">
+        <div class="pill">1 of 5</div>
+        <h4>Translation</h4>
+        <p>Inbound messages → English. Outbound English replies → the agent's language. If the message is already English on either side, we skip the LLM entirely and save ~750ms.</p>
+      </div>
+      <div class="card">
+        <div class="pill">2 of 5</div>
+        <h4>Classification</h4>
+        <p>Reads the English text and assigns category (bug, complaint, request…), severity, tags, and product area. Output is structured JSON parsed straight into the database.</p>
+      </div>
+      <div class="card">
+        <div class="pill">3 of 5</div>
+        <h4>Reply drafts</h4>
+        <p>When the operator opens a ticket, three suggested replies appear — varying in tone (direct, empathetic, investigative). They're suggestions, never auto-sent.</p>
+      </div>
+      <div class="card">
+        <div class="pill">4 of 5</div>
+        <h4>Incident summaries</h4>
+        <p>When a cluster forms, Claude rewrites the mechanical title ("Bug report surge — Haiti") into something specific ("Login screen frozen across HT branches") and proposes a root-cause hypothesis.</p>
+      </div>
+      <div class="card">
+        <div class="pill">5 of 5</div>
+        <h4>KB article drafts</h4>
+        <p>On ticket resolution, Claude turns the conversation + the operator's resolution summary into a full KB draft: title, problem description, fix steps. Lands in <code>/knowledge?status=draft</code> for human review.</p>
+      </div>
+      <div class="card">
+        <div class="pill">Privacy</div>
+        <h4>What never leaves our servers</h4>
+        <p>Phone numbers, WhatsApp message IDs, internal user emails, auth tokens, Twilio credentials — none of these ever get sent to Anthropic. Only the message content and a small amount of context.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Connectivity story ────────────────────────── -->
+  <section>
+    <h2><span class="num">06</span>Built for the connection agents actually have</h2>
+    <p class="subhead">
+      Haiti has some of the slowest internet in the Western Hemisphere. The DRC isn't much better.
+      That reality shaped the architecture — it's not an afterthought.
+    </p>
+
+    <p>
+      A typical agent might be on 2G with effective speeds under 100 Kbps. Power outages
+      take their phone offline for hours. Messages queue on the device and then deliver all at
+      once when connectivity returns. The system treats this as normal, not as an error case.
+    </p>
+
+    <h3>What that looks like in the code</h3>
+
+    <div class="grid">
+      <div class="card">
+        <h4>Two timestamps on every message</h4>
+        <p>"When the agent pressed send" and "when our server received it." Every clock in the system — SLAs, incident windows, analytics — uses the first one, so a slow network doesn't penalize the team's response time.</p>
+      </div>
+      <div class="card">
+        <h4>Extended SLAs by country</h4>
+        <p><span class="chip">HT</span> and <span class="chip">CD</span> get 1.5× the standard windows. <span class="chip">DO</span> uses standard timing.</p>
+      </div>
+      <div class="card">
+        <h4>Message-burst tolerance</h4>
+        <p>When ten queued messages deliver in three seconds after an outage, the system uses each message's original send-time to reconstruct the real timeline — so it doesn't look like a fake spike.</p>
+      </div>
+      <div class="card">
+        <h4>Connectivity health monitoring</h4>
+        <p>A background worker watches the delay between "sent" and "received" per region. If a region goes quiet for 30+ minutes, the dashboard surfaces a "possible outage" alert before anyone has to ask.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Performance ──────────────────────────────── -->
+  <section>
+    <h2><span class="num">07</span>How fast it actually is</h2>
+    <p class="subhead">Measured against the live deployment on Railway, not theoretical.</p>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="num">~1.3s</div>
+        <div class="lbl">Agent presses send → message visible on dashboard (English)</div>
+      </div>
+      <div class="stat">
+        <div class="num">~700ms</div>
+        <div class="lbl">Claude Haiku translation, per call</div>
+      </div>
+      <div class="stat">
+        <div class="num">~200ms</div>
+        <div class="lbl">Dashboard update over Socket.IO (DB write → DOM)</div>
+      </div>
+      <div class="stat">
+        <div class="num">~5,000</div>
+        <div class="lbl">Concurrent dashboard sessions on the current single machine</div>
+      </div>
+      <div class="stat">
+        <div class="num">0.92</div>
+        <div class="lbl">Median translation confidence on Haitian Creole (1.0 = perfect)</div>
+      </div>
+      <div class="stat">
+        <div class="num">124</div>
+        <div class="lbl">Automated tests across 13 files</div>
+      </div>
+    </div>
+
+    <p style="margin-top:18px; color: var(--ink-soft); font-size: 14.5px;">
+      The two biggest wins over the original design: translation and classification now run
+      <strong>in parallel</strong> (saves ~700ms per non-English message), and already-English messages
+      <strong>skip the LLM entirely</strong> via a small heuristic. Both changes came from measuring
+      real production traffic, not guessing.
+    </p>
+  </section>
+
+  <!-- ── Tech stack ──────────────────────────────── -->
+  <section>
+    <h2><span class="num">08</span>The technology, briefly</h2>
+    <p class="subhead">What it's built with, and the one-line reason for each pick.</p>
+
+    <table class="tech">
+      <thead>
+        <tr><th>Layer</th><th>Choice</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Language</td>
+          <td>TypeScript everywhere<span class="why">One language for the API, the dashboard, and shared types. Smaller team can own the whole stack.</span></td>
+        </tr>
+        <tr>
+          <td>API</td>
+          <td>Node.js + Express + Prisma<span class="why">Mature, type-safe, gets out of the way for straightforward CRUD plus webhooks.</span></td>
+        </tr>
+        <tr>
+          <td>Dashboard</td>
+          <td>Next.js 14 + React + Tailwind<span class="why">Server-rendered initial load, file-based routing that maps cleanly to the views.</span></td>
+        </tr>
+        <tr>
+          <td>Database</td>
+          <td>PostgreSQL 16 (Neon) + pgvector<span class="why">Relational integrity for tickets; vector search ready for KB similarity without a second data store.</span></td>
+        </tr>
+        <tr>
+          <td>Cache &amp; queues</td>
+          <td>Redis (Upstash) + BullMQ<span class="why">Backs the inbound message queue, will back the multi-instance Socket.IO when we scale past one machine.</span></td>
+        </tr>
+        <tr>
+          <td>Realtime</td>
+          <td>Socket.IO inside the API process<span class="why">A single <code>ticket:changed</code> event drives nav badges, open drawers, and conversation lists.</span></td>
+        </tr>
+        <tr>
+          <td>WhatsApp</td>
+          <td>Twilio Sandbox<span class="why">Fastest path to a real bidirectional channel; the message-normalizer is provider-agnostic so swapping to Meta Cloud API is one file.</span></td>
+        </tr>
+        <tr>
+          <td>AI</td>
+          <td>Anthropic Claude Haiku 4.5<span class="why">One vendor for translation, classification, reply drafts, incident summaries, and KB drafts. ~700–1100ms per call.</span></td>
+        </tr>
+        <tr>
+          <td>Auth</td>
+          <td>NextAuth + Google OAuth<span class="why">Internal-tool auth without standing up a separate identity service. API verifies a shared HS256 JWT.</span></td>
+        </tr>
+        <tr>
+          <td>Hosting</td>
+          <td>Railway (API + dashboard), Neon (DB), Upstash (Redis)<span class="why">All managed, all free-tier-friendly, all auto-deploy on push to <code>main</code>.</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── Docs map ─────────────────────────────────── -->
+  <section>
+    <h2><span class="num">09</span>If you want to go deeper</h2>
+    <p class="subhead">The full documentation set, in suggested reading order.</p>
+
+    <div class="docs">
+      <div class="doc"><div class="name">PRD.md</div><div class="desc">The original product requirements — what we set out to build.</div></div>
+      <div class="doc"><div class="name">ARCHITECTURE.md</div><div class="desc">System diagram, message lifecycle, every component explained.</div></div>
+      <div class="doc"><div class="name">TECH_STACK.md</div><div class="desc">Every technology choice with the reasoning and a swap path.</div></div>
+      <div class="doc"><div class="name">DATA_MODEL.md</div><div class="desc">Database schema, tables, relationships, field-by-field descriptions.</div></div>
+      <div class="doc"><div class="name">API.md</div><div class="desc">Every HTTP endpoint with request and response examples.</div></div>
+      <div class="doc"><div class="name">AI_USAGE.md</div><div class="desc">All five Claude integrations — prompts, inputs, what gets sent.</div></div>
+      <div class="doc"><div class="name">TRANSLATION.md</div><div class="desc">The translation pipeline, supported languages, glossary plan.</div></div>
+      <div class="doc"><div class="name">CONNECTIVITY.md</div><div class="desc">Haiti / DRC resilience — the design decisions for unreliable networks.</div></div>
+      <div class="doc"><div class="name">PERFORMANCE.md</div><div class="desc">Measured benchmarks against the six PRD metrics.</div></div>
+      <div class="doc"><div class="name">DEPLOYMENT.md</div><div class="desc">Local setup and the production setup on Railway + Neon + Upstash.</div></div>
+      <div class="doc"><div class="name">RUNBOOKS.md</div><div class="desc">Operational playbooks for incidents and common issues.</div></div>
+      <div class="doc"><div class="name">CONTRIBUTING.md</div><div class="desc">Dev setup, coding standards, PR process.</div></div>
+      <div class="doc"><div class="name">CHANGELOG.md</div><div class="desc">Version history — what shipped, when.</div></div>
+    </div>
+  </section>
+
+  <footer>
+    <div>Nclusion Field Agent Support · v0.3.0</div>
+    <div>Generated from 14 markdown files in this repo</div>
+  </footer>
+
+</main>
+</body>
+</html>

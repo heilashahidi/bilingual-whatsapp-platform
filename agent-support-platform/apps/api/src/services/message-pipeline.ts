@@ -75,7 +75,99 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
     },
   });
 
-  // ─── Steps 3 & 4: Translate + Classify (parallel) ──────────
+  // ─── Step 3: Find or create ticket FIRST (before translation) ─
+  //
+  // Reordered from "translate → classify → ticket → message → emit".
+  // For field agents on slow mobile networks we want the support
+  // dashboard to surface the inbound as fast as possible — every
+  // ~500ms shaved here is ~500ms sooner an operator can start typing
+  // a reply, which directly shortens the round-trip the agent feels.
+  //
+  // New order: open-ticket lookup → create-or-attach with placeholder
+  // category → store message with raw text → emit "message" → THEN
+  // translate + classify async and emit a follow-up "updated" event
+  // so the dashboard refetches with the enriched data.
+  //
+  // Side effect: a brand-new ticket appears in the dashboard as
+  // category=other/severity=medium for ~500ms before settling to the
+  // classified values. The dashboard already refetches on
+  // ticket:changed, so it converges naturally. We deliberately can't
+  // emit until the ticket exists, because the existing socket event
+  // shape carries a ticketId and the dashboard expects it to resolve.
+  let ticket = await prisma.ticket.findFirst({
+    where: {
+      agentId: agent.id,
+      status: { in: ["open", "in_progress", "waiting_on_agent"] },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  // We don't yet know the classification; defer the "split tickets on
+  // category change" decision until after we classify (below). For
+  // now: if no open ticket exists, create a placeholder.
+  let createdNewTicket = false;
+  if (!ticket) {
+    const slaProfile = EXTENDED_SLA_COUNTRIES.includes(agent.country)
+      ? SLA_DEFAULTS.extended
+      : SLA_DEFAULTS.standard;
+    const slaConfig = slaProfile.medium;
+    const now = new Date();
+
+    ticket = await prisma.ticket.create({
+      data: {
+        agentId: agent.id,
+        status: "open",
+        category: "other",
+        severity: "medium",
+        tags: [],
+        agentReportedAt: new Date(raw.agentTimestamp),
+        slaFirstResponseDeadline: new Date(now.getTime() + slaConfig.firstResponseMinutes * 60000),
+        slaResolutionDeadline: new Date(now.getTime() + slaConfig.resolutionMinutes * 60000),
+      },
+    });
+    createdNewTicket = true;
+    console.log(`  ✓ Created placeholder ticket ${ticket.id} (classification pending)`);
+  } else if (ticket.status === "waiting_on_agent") {
+    // Agent replied after waiting — move back to in_progress
+    await prisma.ticket.update({
+      where: { id: ticket.id },
+      data: { status: "in_progress" },
+    });
+  }
+
+  // ─── Step 4: Store the message with raw text ─────────────────
+  const deliveryDelay = raw.agentTimestamp !== raw.serverReceivedAt
+    ? Math.round((new Date(raw.serverReceivedAt).getTime() - new Date(raw.agentTimestamp).getTime()) / 1000)
+    : 0;
+
+  const message = await prisma.message.create({
+    data: {
+      ticketId: ticket!.id,
+      direction: "inbound",
+      senderType: "agent",
+      senderId: agent.id,
+      originalText: raw.textBody,
+      originalLanguage: agent.preferredLanguage,
+      translatedText: raw.textBody, // raw initially; patched after translation
+      translationConfidence: null,
+      contentType: raw.contentType as any,
+      mediaUrls: raw.mediaUrl ? [raw.mediaUrl] : [],
+      classification: undefined,
+      whatsappMessageId: raw.externalId,
+      agentTimestamp: new Date(raw.agentTimestamp),
+      serverReceivedAt: new Date(raw.serverReceivedAt),
+      deliveryDelay,
+    },
+  });
+
+  console.log(`  ✓ Stored raw message ${message.id} (delivery delay: ${deliveryDelay}s)`);
+
+  // ─── Step 5: EARLY EMIT — dashboard wakes up immediately ─────
+  // Fires before translation/classification so support staff see the
+  // new message ~500ms sooner.
+  emitTicketEvent(createdNewTicket ? "created" : "message", ticket!.id);
+
+  // ─── Steps 6 & 7: Translate + Classify (parallel) ────────────
   //
   // Previously sequential: translate → English, then classify the
   // translated text. With Haiku that's two ~700 ms hops back-to-back.
@@ -173,94 +265,92 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
     }
   }
 
-  // ─── Step 5: Find or create ticket ──────────────────────────
-  // Look for an existing open ticket from this agent
-  let ticket = await prisma.ticket.findFirst({
-    where: {
-      agentId: agent.id,
-      status: { in: ["open", "in_progress", "waiting_on_agent"] },
+  // ─── Step 7b: Patch the message with translation + classification ──
+  await prisma.message.update({
+    where: { id: message.id },
+    data: {
+      originalLanguage: detectedLanguage as any,
+      translatedText,
+      translationConfidence,
+      classification: classification as any,
     },
-    orderBy: { createdAt: "desc" },
   });
 
-  const shouldCreateNew =
-    !ticket ||
-    // If the existing ticket's category differs from the new message, create a new one
-    (classification && ticket.category !== classification.category);
-
-  if (shouldCreateNew) {
-    // Compute SLA deadlines
+  // ─── Step 7c: Reconcile ticket category/severity ────────────
+  // If we created a placeholder ticket, replace its category/severity
+  // with the now-known classification. If we appended to an existing
+  // ticket but the new message's category differs, split into a new
+  // ticket (matching prior behavior).
+  let shouldCreateNew = false;
+  if (classification && createdNewTicket) {
     const slaProfile = EXTENDED_SLA_COUNTRIES.includes(agent.country)
       ? SLA_DEFAULTS.extended
       : SLA_DEFAULTS.standard;
-
-    const severity = classification?.severity || "medium";
-    const slaConfig = slaProfile[severity];
+    const slaConfig = slaProfile[classification.severity as "critical" | "high" | "medium" | "low"];
     const now = new Date();
-
-    ticket = await prisma.ticket.create({
+    ticket = await prisma.ticket.update({
+      where: { id: ticket!.id },
       data: {
-        agentId: agent.id,
-        status: "open",
-        category: (classification?.category as any) || "other",
-        severity: (classification?.severity as any) || "medium",
-        productArea: classification?.productArea || null,
-        tags: classification?.tags || [],
-        agentReportedAt: new Date(raw.agentTimestamp),
+        category: classification.category as any,
+        severity: classification.severity as any,
+        productArea: classification.productArea || null,
+        tags: classification.tags || [],
         slaFirstResponseDeadline: new Date(now.getTime() + slaConfig.firstResponseMinutes * 60000),
         slaResolutionDeadline: new Date(now.getTime() + slaConfig.resolutionMinutes * 60000),
       },
     });
-    console.log(`  ✓ Created ticket ${ticket.id} [${ticket.severity}/${ticket.category}]`);
-
     recordEvent({
       ticketId: ticket.id,
       action: "ticket_created",
-      actor: null, // webhook origin, no signed-in user
+      actor: null,
       payload: {
         severity: ticket.severity,
         category: ticket.category,
         source: "whatsapp_inbound",
       },
     });
-  } else {
-    console.log(`  ✓ Appending to existing ticket ${ticket!.id}`);
-
-    // If the agent replies after waiting, move back to in_progress
-    if (ticket!.status === "waiting_on_agent") {
-      await prisma.ticket.update({
-        where: { id: ticket!.id },
-        data: { status: "in_progress" },
-      });
-    }
+    shouldCreateNew = true;
+  } else if (classification && !createdNewTicket && ticket!.category !== classification.category) {
+    // Existing ticket but the new message is a different category — split.
+    const slaProfile = EXTENDED_SLA_COUNTRIES.includes(agent.country)
+      ? SLA_DEFAULTS.extended
+      : SLA_DEFAULTS.standard;
+    const slaConfig = slaProfile[classification.severity as "critical" | "high" | "medium" | "low"];
+    const now = new Date();
+    const newTicket = await prisma.ticket.create({
+      data: {
+        agentId: agent.id,
+        status: "open",
+        category: classification.category as any,
+        severity: classification.severity as any,
+        productArea: classification.productArea || null,
+        tags: classification.tags || [],
+        agentReportedAt: new Date(raw.agentTimestamp),
+        slaFirstResponseDeadline: new Date(now.getTime() + slaConfig.firstResponseMinutes * 60000),
+        slaResolutionDeadline: new Date(now.getTime() + slaConfig.resolutionMinutes * 60000),
+      },
+    });
+    // Move the message we just stored onto the new ticket.
+    await prisma.message.update({
+      where: { id: message.id },
+      data: { ticketId: newTicket.id },
+    });
+    recordEvent({
+      ticketId: newTicket.id,
+      action: "ticket_created",
+      actor: null,
+      payload: {
+        severity: newTicket.severity,
+        category: newTicket.category,
+        source: "whatsapp_inbound",
+      },
+    });
+    // The early emit fired against the original ticket id; emit
+    // created against the new ticket so the dashboard picks it up.
+    emitTicketEvent("created", newTicket.id);
+    ticket = newTicket;
+    shouldCreateNew = true;
   }
-
-  // ─── Step 6: Store the message ──────────────────────────────
-  const deliveryDelay = raw.agentTimestamp !== raw.serverReceivedAt
-    ? Math.round((new Date(raw.serverReceivedAt).getTime() - new Date(raw.agentTimestamp).getTime()) / 1000)
-    : 0;
-
-  const message = await prisma.message.create({
-    data: {
-      ticketId: ticket!.id,
-      direction: "inbound",
-      senderType: "agent",
-      senderId: agent.id,
-      originalText: raw.textBody,
-      originalLanguage: detectedLanguage as any,
-      translatedText,
-      translationConfidence,
-      contentType: raw.contentType as any,
-      mediaUrls: raw.mediaUrl ? [raw.mediaUrl] : [],
-      classification: classification as any,
-      whatsappMessageId: raw.externalId,
-      agentTimestamp: new Date(raw.agentTimestamp),
-      serverReceivedAt: new Date(raw.serverReceivedAt),
-      deliveryDelay,
-    },
-  });
-
-  console.log(`  ✓ Stored message ${message.id} (delivery delay: ${deliveryDelay}s)`);
 
   // ─── Step 7: Pin KB suggestions for new tickets ───────────
   // Only on new tickets — appending a message to an existing one
@@ -342,8 +432,11 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
     }
   }
 
-  // ─── Step 9: Realtime broadcast ────────────────────────────
-  emitTicketEvent(shouldCreateNew ? "created" : "message", ticket!.id);
+  // ─── Step 9: Realtime broadcast (enriched) ─────────────────
+  // We already emitted at Step 5 to wake the dashboard; this second
+  // emit signals translation+classification are done, so the
+  // dashboard refetches and renders the enriched view.
+  emitTicketEvent("updated", ticket!.id);
 
   // ─── Step 10: Incident clustering ──────────────────────────
   // Only on new tickets — appended messages on an already-clustered ticket

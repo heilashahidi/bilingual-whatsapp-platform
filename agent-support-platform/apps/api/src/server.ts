@@ -12,6 +12,8 @@ import { prisma } from "./services/database";
 import { initRealtime } from "./services/realtime";
 import { startInboundWorker, stopInboundWorker } from "./services/queue-worker";
 import { closeQueue } from "./services/queue";
+import { startOutboundWorker, stopOutboundWorker } from "./services/outbound-worker";
+import { closeOutboundQueue } from "./services/outbound-queue";
 import { requireAuth } from "./middleware/auth";
 
 dotenv.config();
@@ -61,6 +63,7 @@ initRealtime(httpServer);
 // No-op when REDIS_URL isn't set (the queue helper falls back to
 // inline processing in that case).
 startInboundWorker();
+startOutboundWorker();
 
 httpServer.listen(PORT, () => {
   console.log(`✓ API server running on http://localhost:${PORT}`);
@@ -77,7 +80,9 @@ async function shutdown(signal: NodeJS.Signals) {
   console.log(`\n${signal} received — shutting down…`);
   try {
     await stopInboundWorker();
+    await stopOutboundWorker();
     await closeQueue();
+    await closeOutboundQueue();
     await prisma.$disconnect();
   } catch (err) {
     console.error("Error during shutdown:", err);
