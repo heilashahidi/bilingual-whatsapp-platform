@@ -12,7 +12,7 @@ import { InboxSidebar } from "./inbox-sidebar";
 import { KanbanBoard } from "./kanban-board";
 import { ListView } from "./list-view";
 import { NewTicketModal } from "./new-ticket-modal";
-import { PageHeader } from "./page-header";
+import { PageHeader, type StatusCounts } from "./page-header";
 import { TicketDrawer } from "./ticket-drawer";
 
 // Front-style shell. Default view is the three-pane inbox layout
@@ -26,13 +26,11 @@ import { TicketDrawer } from "./ticket-drawer";
 export function TicketsShell({
   tickets,
   users,
-  total,
-  closedCount,
+  statusCounts,
 }: {
   tickets: Ticket[];
   users: InternalUser[];
-  total: number;
-  closedCount: number;
+  statusCounts: StatusCounts;
 }) {
   const [prefs, setPrefs] = useUiPrefs();
   const [newOpen, setNewOpen] = useState(false);
@@ -98,8 +96,7 @@ export function TicketsShell({
           prefs={prefs}
           onPrefsChange={setPrefs}
           onNewTicket={() => setNewOpen(true)}
-          total={total}
-          closedCount={closedCount}
+          statusCounts={statusCounts}
         />
 
         <FiltersBar users={users} />

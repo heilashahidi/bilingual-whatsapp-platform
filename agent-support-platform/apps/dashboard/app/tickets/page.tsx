@@ -34,9 +34,15 @@ export default async function TicketsPage() {
     );
   }
 
-  const closedCount = data.tickets.reduce(
-    (n, t) => (t.status === "closed" ? n + 1 : n),
-    0
+  // Status breakdown for the PageHeader — count per status so the
+  // header can render "12 open · 3 in progress · 1 waiting · 7 resolved"
+  // instead of a single total-all-ever number.
+  const statusCounts = data.tickets.reduce(
+    (acc, t) => {
+      acc[t.status] = (acc[t.status] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>
   );
 
   return (
@@ -45,8 +51,7 @@ export default async function TicketsPage() {
       <TicketsShell
         tickets={data.tickets}
         users={users}
-        total={data.total}
-        closedCount={closedCount}
+        statusCounts={statusCounts}
       />
     </>
   );

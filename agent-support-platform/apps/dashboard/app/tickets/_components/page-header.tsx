@@ -1,35 +1,56 @@
 "use client";
 
+import type { TicketStatus } from "@/lib/types";
 import type { UiPrefs } from "@/lib/ui-prefs";
 
 // Header row that sits between the page title and the FiltersBar.
 // Owns: view toggle (kanban/list), density toggle, bilingual toggle,
 // New ticket button. All state passes through props — the shell owns it.
 
+export type StatusCounts = Partial<Record<TicketStatus, number>>;
+
+// Order matches the operator's mental flow: incoming → triaged → waiting
+// → done. Closed is intentionally excluded — it's archive, not queue
+// shape; surfacing the closed count just makes the line longer without
+// telling operators anything actionable.
+const STATUS_DISPLAY: { key: TicketStatus; label: string }[] = [
+  { key: "open",             label: "open" },
+  { key: "in_progress",      label: "in progress" },
+  { key: "waiting_on_agent", label: "waiting" },
+  { key: "resolved",         label: "resolved" },
+];
+
 export function PageHeader({
   prefs,
   onPrefsChange,
   onNewTicket,
-  total,
-  closedCount,
+  statusCounts,
 }: {
   prefs: UiPrefs;
   onPrefsChange: (patch: Partial<UiPrefs>) => void;
   onNewTicket: () => void;
-  total?: number;
-  closedCount?: number;
+  statusCounts?: StatusCounts;
 }) {
+  const breakdown = statusCounts
+    ? STATUS_DISPLAY.filter((s) => (statusCounts[s.key] ?? 0) > 0).map(
+        (s) => `${statusCounts[s.key]} ${s.label}`
+      )
+    : [];
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-baseline gap-3">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
           Tickets
         </h1>
-        {typeof total === "number" && (
+        {breakdown.length > 0 ? (
           <span className="text-sm text-slate-500">
-            {total} total
-            {closedCount ? ` · ${closedCount} closed` : ""}
+            {breakdown.join(" · ")}
           </span>
+        ) : (
+          statusCounts && (
+            <span className="text-sm text-slate-400">no tickets</span>
+          )
         )}
       </div>
 
