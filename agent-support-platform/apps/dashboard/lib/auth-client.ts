@@ -22,7 +22,3 @@ export async function getClientAuthToken(): Promise<string | undefined> {
     return undefined;
   }
 }
-
-export function clearClientAuthCache() {
-  cached = null;
-}
