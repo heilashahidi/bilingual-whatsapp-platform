@@ -109,7 +109,13 @@ Shape: { "score": <0.0-1.0>, "rationale": "<one short sentence naming the worst 
 
 export async function HallucinationJudge(args: ScorerArgs): Promise<ScoreResult> {
   const result = await judgeWithClaude({ prompt: HALLUCINATION_PROMPT(args) });
-  if (!result) return { name: "hallucination_judge", score: 0, metadata: { skipped: "no ANTHROPIC_API_KEY" } };
+  if (!result) {
+    return {
+      name: "hallucination_judge",
+      score: 0,
+      metadata: { skipped: "judge_unavailable (missing key, request failed, or parse failed)" },
+    };
+  }
   return { name: "hallucination_judge", score: result.score, metadata: { rationale: result.rationale } };
 }
 
@@ -140,6 +146,12 @@ Shape: { "score": <0.0-1.0>, "rationale": "<one short sentence>" }`;
 
 export async function HelpfulnessJudge(args: ScorerArgs): Promise<ScoreResult> {
   const result = await judgeWithClaude({ prompt: HELPFULNESS_PROMPT(args) });
-  if (!result) return { name: "helpfulness_judge", score: 0, metadata: { skipped: "no ANTHROPIC_API_KEY" } };
+  if (!result) {
+    return {
+      name: "helpfulness_judge",
+      score: 0,
+      metadata: { skipped: "judge_unavailable (missing key, request failed, or parse failed)" },
+    };
+  }
   return { name: "helpfulness_judge", score: result.score, metadata: { rationale: result.rationale } };
 }

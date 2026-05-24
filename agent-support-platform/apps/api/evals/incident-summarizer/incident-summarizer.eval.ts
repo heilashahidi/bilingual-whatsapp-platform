@@ -10,6 +10,15 @@ import {
   ActionabilityJudge,
 } from "./scorers";
 
+const baseScores = [
+  ProducesNonNull,
+  TitleLength,
+  TitleMentions,
+  NoHallucinatedMentions,
+];
+
+const judgeScores = [FaithfulnessJudge, ActionabilityJudge];
+
 Eval("incident-summarizer", {
   data: () =>
     dataset.map((c) => ({
@@ -18,12 +27,6 @@ Eval("incident-summarizer", {
       metadata: c.metadata,
     })),
   task: (input) => generateIncidentSummary(input),
-  scores: [
-    ProducesNonNull,
-    TitleLength,
-    TitleMentions,
-    NoHallucinatedMentions,
-    FaithfulnessJudge,
-    ActionabilityJudge,
-  ],
+  // Keep offline runs meaningful by skipping judge scorers without credentials.
+  scores: process.env.ANTHROPIC_API_KEY ? [...baseScores, ...judgeScores] : baseScores,
 });

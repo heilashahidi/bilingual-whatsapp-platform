@@ -92,7 +92,7 @@ export async function NoForbidden({ output, expected }: ScorerArgs): Promise<Sco
 // scorer's filter is 0.34; any 0/negative/>1 slipping through is a regression.
 export async function ScoresInRange({ output }: ScorerArgs): Promise<ScoreResult> {
   if (output.length === 0) return { name: "scores_in_range", score: 1, metadata: { skipped: "empty output" } };
-  const bad = output.filter((o) => o.score <= 0.34 || o.score > 1.0);
+  const bad = output.filter((o) => o.score < 0.34 || o.score > 1.0);
   return {
     name: "scores_in_range",
     score: 1 - bad.length / output.length,

@@ -117,7 +117,11 @@ Shape: { "outputLanguage": "<language you identified>", "score": <0.0-1.0>, "rat
 export async function AccuracyJudge(args: ScorerArgs): Promise<ScoreResult> {
   const result = await judgeWithClaude({ prompt: ACCURACY_PROMPT(args) });
   if (!result) {
-    return { name: "accuracy_judge", score: 0, metadata: { skipped: "no ANTHROPIC_API_KEY or judge call failed" } };
+    return {
+      name: "accuracy_judge",
+      score: 0,
+      metadata: { skipped: "judge_unavailable (missing key, request failed, or parse failed)" },
+    };
   }
   return { name: "accuracy_judge", score: result.score, metadata: { rationale: result.rationale } };
 }
@@ -145,7 +149,11 @@ Shape: { "textLanguage": "<language you identified>", "score": <0.0-1.0>, "ratio
 export async function FluencyJudge(args: ScorerArgs): Promise<ScoreResult> {
   const result = await judgeWithClaude({ prompt: FLUENCY_PROMPT(args) });
   if (!result) {
-    return { name: "fluency_judge", score: 0, metadata: { skipped: "no ANTHROPIC_API_KEY or judge call failed" } };
+    return {
+      name: "fluency_judge",
+      score: 0,
+      metadata: { skipped: "judge_unavailable (missing key, request failed, or parse failed)" },
+    };
   }
   return { name: "fluency_judge", score: result.score, metadata: { rationale: result.rationale } };
 }

@@ -70,7 +70,10 @@ export async function NoHallucinatedMentions({ output, expected }: ScorerArgs): 
 
 const FAITHFULNESS_PROMPT = (args: ScorerArgs) => {
   const reports = args.input.tickets
-    .map((t, i) => `${i + 1}. [${t.branchName}, ${t.country}] "${t.firstMessageText}" tags=[${t.tags.join(", ")}]`)
+    .map((t, i) => {
+      const loc = t.branchRegion ? `${t.branchName} (${t.branchRegion}), ${t.country}` : `${t.branchName}, ${t.country}`;
+      return `${i + 1}. [${loc}] "${t.firstMessageText}" tags=[${t.tags.join(", ")}]`;
+    })
     .join("\n");
 
   const output = args.output
@@ -100,13 +103,22 @@ Shape: { "score": <0.0-1.0>, "rationale": "<one short sentence naming any invent
 
 export async function FaithfulnessJudge(args: ScorerArgs): Promise<ScoreResult> {
   const result = await judgeWithClaude({ prompt: FAITHFULNESS_PROMPT(args) });
-  if (!result) return { name: "faithfulness_judge", score: 0, metadata: { skipped: "no ANTHROPIC_API_KEY" } };
+  if (!result) {
+    return {
+      name: "faithfulness_judge",
+      score: 0,
+      metadata: { skipped: "judge_unavailable (missing key, request failed, or parse failed)" },
+    };
+  }
   return { name: "faithfulness_judge", score: result.score, metadata: { rationale: result.rationale } };
 }
 
 const ACTIONABILITY_PROMPT = (args: ScorerArgs) => {
   const reports = args.input.tickets
-    .map((t, i) => `${i + 1}. [${t.branchName}] "${t.firstMessageText}"`)
+    .map((t, i) => {
+      const loc = t.branchRegion ? `${t.branchName} (${t.branchRegion}), ${t.country}` : `${t.branchName}, ${t.country}`;
+      return `${i + 1}. [${loc}] "${t.firstMessageText}"`;
+    })
     .join("\n");
 
   const output = args.output
@@ -125,6 +137,7 @@ IDEAL NEXT-STEP HINT (what a senior engineer would do): ${args.expected.rootCaus
 
 Score on 0.0–1.0 how useful this summary is for an on-call engineer waking up to a page:
 - 1.0 = title is specific & scannable, root cause names a concrete service/component and proposes a concrete next step
+- 1.0 can also be earned when the best action is to identify this as likely non-platform/noise and propose concrete triage suppression steps
 - 0.7 = useful but vague on either the cause or the next step
 - 0.4 = generic restatement of the reports without diagnostic insight
 - 0.0 = misleading or actively confusing — would send oncall in the wrong direction
@@ -135,6 +148,12 @@ Shape: { "score": <0.0-1.0>, "rationale": "<one short sentence>" }`;
 
 export async function ActionabilityJudge(args: ScorerArgs): Promise<ScoreResult> {
   const result = await judgeWithClaude({ prompt: ACTIONABILITY_PROMPT(args) });
-  if (!result) return { name: "actionability_judge", score: 0, metadata: { skipped: "no ANTHROPIC_API_KEY" } };
+  if (!result) {
+    return {
+      name: "actionability_judge",
+      score: 0,
+      metadata: { skipped: "judge_unavailable (missing key, request failed, or parse failed)" },
+    };
+  }
   return { name: "actionability_judge", score: result.score, metadata: { rationale: result.rationale } };
 }

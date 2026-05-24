@@ -10,6 +10,15 @@ import {
   HelpfulnessJudge,
 } from "./scorers";
 
+const baseScores = [
+  HasThreeSuggestions,
+  DistinctTones,
+  LengthSanity,
+  FactReference,
+];
+
+const judgeScores = [HallucinationJudge, HelpfulnessJudge];
+
 Eval("reply-suggester", {
   data: () =>
     dataset.map((c) => ({
@@ -18,12 +27,6 @@ Eval("reply-suggester", {
       metadata: c.metadata,
     })),
   task: (input) => generateReplySuggestions(input),
-  scores: [
-    HasThreeSuggestions,
-    DistinctTones,
-    LengthSanity,
-    FactReference,
-    HallucinationJudge,
-    HelpfulnessJudge,
-  ],
+  // Avoid penalizing local runs when judge credentials are intentionally absent.
+  scores: process.env.ANTHROPIC_API_KEY ? [...baseScores, ...judgeScores] : baseScores,
 });

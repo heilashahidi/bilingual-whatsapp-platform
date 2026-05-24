@@ -37,11 +37,18 @@ export async function judgeWithClaude({ prompt, maxTokens = 200 }: JudgeArgs): P
 
   const data = (await response.json()) as { content?: Array<{ text?: string }> };
   const raw = data.content?.[0]?.text || "";
-
   const clean = raw.replace(/```json|```/g, "").trim();
-  const parsed = JSON.parse(clean) as { score?: number; rationale?: string };
-  const score = typeof parsed.score === "number" ? parsed.score : 0;
-  const final = { score: Math.max(0, Math.min(1, score)), rationale: parsed.rationale || "" };
-  if (process.env.DEBUG_JUDGE) console.error("[judge]", JSON.stringify({ raw: parsed, final }));
-  return final;
+
+  try {
+    const parsed = JSON.parse(clean) as { score?: number; rationale?: string };
+    const score = typeof parsed.score === "number" ? parsed.score : 0;
+    const final = { score: Math.max(0, Math.min(1, score)), rationale: parsed.rationale || "" };
+    if (process.env.DEBUG_JUDGE) console.error("[judge]", JSON.stringify({ raw: parsed, final }));
+    return final;
+  } catch {
+    if (process.env.DEBUG_JUDGE) {
+      console.error("[judge-parse-failed]", clean.slice(0, 300));
+    }
+    return null;
+  }
 }

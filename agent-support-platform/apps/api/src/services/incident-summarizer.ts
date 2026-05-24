@@ -122,7 +122,14 @@ Category: ${context.category ?? "unknown"} · Severity: ${context.severity}
 
 Write a JSON object with two fields:
 - "title": one short, specific sentence (max 80 characters) describing what is happening. Mention the specific feature/component if you can infer it. Examples of good titles: "Lottery results page failing to load across Cap-Haïtien branches", "Login screen crashes on Android app version 4.2.1". Avoid generic titles like "App is broken".
-- "rootCause": 1–3 sentences hypothesizing the likely cause AND suggesting one concrete next step for the on-call engineer to investigate. Be specific to what the reports describe; do not invent details that aren't in the reports.
+- "rootCause": 1–2 sentences with exactly:
+  (a) ONE primary hypothesis tied to report evidence (no laundry list),
+  (b) ONE first verification step the on-call engineer should run now.
+  Be specific to what the reports describe; do not invent details that aren't in the reports.
+
+Connectivity clustering rule:
+- If reports mostly indicate agent-side connectivity symptoms (weak signal, bad wifi, spotty mobile data) across different countries/regions/branches, treat it as likely independent local network issues rather than one platform outage.
+- In that case, make the root cause explicitly say this likely should not be treated as a single platform incident and suggest triage/suppression guidance as the first step.
 
 Reply with ONLY the JSON object. No prose, no markdown fences.
 

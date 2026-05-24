@@ -10,6 +10,15 @@ import {
   FluencyJudge,
 } from "./scorers";
 
+const baseScores = [
+  LanguageDetection,
+  PreservationCheck,
+  LengthSanity,
+  PassThroughExact,
+];
+
+const judgeScores = [AccuracyJudge, FluencyJudge];
+
 Eval("translation", {
   data: () =>
     dataset.map((c) => ({
@@ -19,12 +28,7 @@ Eval("translation", {
     })),
   task: ({ text, targetLanguage }: { text: string; targetLanguage: string }) =>
     translateMessage(text, targetLanguage),
-  scores: [
-    LanguageDetection,
-    PreservationCheck,
-    LengthSanity,
-    PassThroughExact,
-    AccuracyJudge,
-    FluencyJudge,
-  ],
+  // Register judge-based scorers only when the key is available so missing
+  // credentials produce true "skip" behavior rather than synthetic failures.
+  scores: process.env.ANTHROPIC_API_KEY ? [...baseScores, ...judgeScores] : baseScores,
 });

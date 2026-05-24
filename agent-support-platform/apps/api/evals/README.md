@@ -13,7 +13,8 @@ Braintrust evals for every LLM call site in `apps/api`:
 From `apps/api/`:
 
 ```sh
-# Local-only — runs all 5 evals. LLM-judge scorers gracefully skip without ANTHROPIC_API_KEY.
+# Local-only — runs all 5 evals without uploading traces/scores to braintrust.dev.
+# Judge-based metrics are registered only when ANTHROPIC_API_KEY is present.
 pnpm eval:offline
 
 # Online — uploads to braintrust.dev for diffs across runs and the trace UI.
@@ -27,8 +28,8 @@ npx braintrust eval --no-send-logs evals/reply-suggester
 DEBUG_JUDGE=1 npx braintrust eval --no-send-logs evals/translation
 ```
 
-By default, the production call sites that have a stub fallback (translation,
-classification) run against the stub. Flip env flags to eval the real models:
+By default, the production call sites that have a stub fallback (`translation`,
+`classification`) run against the stub. Flip env flags to eval the real models:
 
 ```sh
 USE_REAL_CLASSIFICATION=true USE_REAL_TRANSLATION=true \
@@ -38,6 +39,15 @@ USE_REAL_CLASSIFICATION=true USE_REAL_TRANSLATION=true \
 The LLM-as-judge scorers (accuracy, fluency, faithfulness, hallucination,
 helpfulness, actionability) use Claude Sonnet because it follows scoring
 rubrics more strictly than Haiku — see `_lib/judge.ts`.
+
+### Offline mode semantics
+
+- `eval:offline` means "don't upload to Braintrust", not "no model calls".
+- Without `ANTHROPIC_API_KEY`:
+  - `classification` and `translation` tasks still run (stub path unless real flags are set).
+  - `kb-search` runs fully offline.
+  - `reply-suggester` / `incident-summarizer` task functions return empty/null by design.
+  - Judge-based scorers are not registered, so they do not count as failures.
 
 ## What gets scored
 
