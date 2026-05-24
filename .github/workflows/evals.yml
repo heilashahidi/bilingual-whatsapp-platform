@@ -19,6 +19,7 @@ on:
       - "agent-support-platform/apps/api/package.json"
       - "agent-support-platform/packages/shared/**"
       - ".github/workflows/evals.yml"
+  workflow_dispatch:
 
 jobs:
   evals:
