@@ -1,5 +1,7 @@
 "use client";
 
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useMemo } from "react";
 import type { TicketStatus } from "@/lib/types";
 import type { UiPrefs } from "@/lib/ui-prefs";
 
@@ -9,15 +11,15 @@ import type { UiPrefs } from "@/lib/ui-prefs";
 
 export type StatusCounts = Partial<Record<TicketStatus, number>>;
 
-// Order matches the operator's mental flow: incoming → triaged → waiting
-// → done. Closed is intentionally excluded — it's archive, not queue
-// shape; surfacing the closed count just makes the line longer without
-// telling operators anything actionable.
-const STATUS_DISPLAY: { key: TicketStatus; label: string }[] = [
-  { key: "open",             label: "open" },
-  { key: "in_progress",      label: "in progress" },
-  { key: "waiting_on_agent", label: "waiting" },
-  { key: "resolved",         label: "resolved" },
+// Status filter chips. Order matches the operator's flow: incoming →
+// triaged → waiting → done. Each chip toggles ?status=<key> on the URL,
+// which all three views (inbox / kanban / list) read. Closed is
+// archive, not queue, so it's not surfaced.
+const STATUS_CHIPS: { key: TicketStatus; label: string; tone: string }[] = [
+  { key: "open",             label: "Open",        tone: "bg-sky-50 text-sky-700 ring-sky-200" },
+  { key: "in_progress",      label: "In progress", tone: "bg-violet-50 text-violet-700 ring-violet-200" },
+  { key: "waiting_on_agent", label: "Waiting",     tone: "bg-amber-50 text-amber-700 ring-amber-200" },
+  { key: "resolved",         label: "Resolved",    tone: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
 ];
 
 export function PageHeader({
@@ -31,26 +33,61 @@ export function PageHeader({
   onNewTicket: () => void;
   statusCounts?: StatusCounts;
 }) {
-  const breakdown = statusCounts
-    ? STATUS_DISPLAY.filter((s) => (statusCounts[s.key] ?? 0) > 0).map(
-        (s) => `${statusCounts[s.key]} ${s.label}`
-      )
-    : [];
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activeStatus = searchParams.get("status") as TicketStatus | null;
+
+  const setStatus = useMemo(
+    () => (next: TicketStatus | null) => {
+      const p = new URLSearchParams(searchParams.toString());
+      if (!next || next === activeStatus) p.delete("status");
+      else p.set("status", next);
+      const qs = p.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [router, pathname, searchParams, activeStatus]
+  );
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex items-baseline gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
           Tickets
         </h1>
-        {breakdown.length > 0 ? (
-          <span className="text-sm text-slate-500">
-            {breakdown.join(" · ")}
-          </span>
-        ) : (
-          statusCounts && (
-            <span className="text-sm text-slate-400">no tickets</span>
-          )
+        {statusCounts && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {STATUS_CHIPS.map((s) => {
+              const count = statusCounts[s.key] ?? 0;
+              if (count === 0 && activeStatus !== s.key) return null;
+              const active = activeStatus === s.key;
+              return (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => setStatus(s.key)}
+                  aria-pressed={active}
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset transition ${
+                    active
+                      ? s.tone
+                      : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  {s.label}
+                  <span className="font-mono tabular-nums opacity-80">{count}</span>
+                </button>
+              );
+            })}
+            {activeStatus && (
+              <button
+                type="button"
+                onClick={() => setStatus(null)}
+                className="text-[11px] text-slate-500 hover:text-slate-900"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         )}
       </div>
 

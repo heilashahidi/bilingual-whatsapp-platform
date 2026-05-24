@@ -45,9 +45,13 @@ export function TicketsShell({
 
   // Closed tickets are archived — they don't show in any of the three
   // views by default. ?closed=1 overrides this for archive inspection.
-  const visible = includeClosed
+  // ?status=<key> further narrows to a single status, driven by the
+  // status chips in PageHeader.
+  const statusFilter = searchParams.get("status");
+  const visible = (includeClosed
     ? tickets
-    : tickets.filter((t) => t.status !== "closed");
+    : tickets.filter((t) => t.status !== "closed")
+  ).filter((t) => !statusFilter || t.status === statusFilter);
 
   // When the user is intentionally inspecting closed tickets, kanban has
   // no Closed column to render them in — force the list view so they're
