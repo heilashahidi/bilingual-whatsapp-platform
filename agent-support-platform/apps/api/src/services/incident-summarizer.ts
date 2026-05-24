@@ -11,9 +11,23 @@ import { prisma } from "./database";
 // before this runs, so a Claude outage means the incident just keeps
 // the generic name rather than breaking the cluster flow.
 
-interface SummaryOutput {
+export interface IncidentSummaryOutput {
   title: string;
   rootCause: string;
+}
+
+export interface IncidentTicketForSummary {
+  branchName: string;
+  branchRegion: string | null;
+  country: string;
+  firstMessageText: string;
+  tags: string[];
+}
+
+export interface IncidentSummaryContext {
+  category: string | null;
+  severity: string;
+  tickets: IncidentTicketForSummary[];
 }
 
 export async function summarizeIncident(incidentId: string): Promise<void> {
@@ -52,29 +66,59 @@ export async function summarizeIncident(incidentId: string): Promise<void> {
   if (!incident) return;
   if (incident.tickets.length === 0) return;
 
-  // Build a compact prompt: one bullet per contributing ticket with the
-  // agent's first message + branch context.
-  const ticketLines = incident.tickets.map((t, i) => {
-    const text =
-      t.messages[0]?.translatedText ?? t.messages[0]?.originalText ?? "(no message)";
-    const branch = `${t.agent.branch.name} (${t.agent.branch.region})`;
-    const tags = (t.tags ?? []).length ? ` [${t.tags.join(", ")}]` : "";
-    return `${i + 1}. ${branch}: "${truncate(text, 160)}"${tags}`;
+  const context: IncidentSummaryContext = {
+    category: incident.category,
+    severity: incident.severity,
+    tickets: incident.tickets.map((t) => ({
+      branchName: t.agent.branch.name,
+      branchRegion: t.agent.branch.region,
+      country: t.agent.country,
+      firstMessageText:
+        t.messages[0]?.translatedText ?? t.messages[0]?.originalText ?? "(no message)",
+      tags: t.tags ?? [],
+    })),
+  };
+
+  const parsed = await generateIncidentSummary(context);
+  if (!parsed) return;
+
+  await prisma.incident.update({
+    where: { id: incidentId },
+    data: {
+      title: parsed.title,
+      rootCause: parsed.rootCause,
+    },
   });
 
-  const branchSet = new Set(
-    incident.tickets.map((t) => t.agent.branch.name)
+  console.log(
+    `  🧠 Incident ${incidentId.slice(0, 8)} retitled: "${parsed.title}"`
   );
-  const countrySet = new Set(
-    incident.tickets.map((t) => t.agent.country)
-  );
+}
+
+// Pure LLM-calling path: takes already-assembled context, asks Claude for a
+// title + root-cause hypothesis. Exported so evals can target it directly
+// without needing a populated database.
+export async function generateIncidentSummary(
+  context: IncidentSummaryContext
+): Promise<IncidentSummaryOutput | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  const ticketLines = context.tickets.map((t, i) => {
+    const branch = t.branchRegion ? `${t.branchName} (${t.branchRegion})` : t.branchName;
+    const tags = t.tags.length ? ` [${t.tags.join(", ")}]` : "";
+    return `${i + 1}. ${branch}: "${truncate(t.firstMessageText, 160)}"${tags}`;
+  });
+
+  const branchSet = new Set(context.tickets.map((t) => t.branchName));
+  const countrySet = new Set(context.tickets.map((t) => t.country));
 
   const prompt = `You are an on-call operations engineer. Several field agents have reported similar issues in the last 30 minutes and the system has automatically clustered them into one incident. Read the reports and write a short summary.
 
-Contributing tickets (${incident.tickets.length} total, ${branchSet.size} branches affected in ${Array.from(countrySet).join(", ")}):
+Contributing tickets (${context.tickets.length} total, ${branchSet.size} branches affected in ${Array.from(countrySet).join(", ")}):
 ${ticketLines.join("\n")}
 
-Category: ${incident.category} · Severity: ${incident.severity}
+Category: ${context.category ?? "unknown"} · Severity: ${context.severity}
 
 Write a JSON object with two fields:
 - "title": one short, specific sentence (max 80 characters) describing what is happening. Mention the specific feature/component if you can infer it. Examples of good titles: "Lottery results page failing to load across Cap-Haïtien branches", "Login screen crashes on Android app version 4.2.1". Avoid generic titles like "App is broken".
@@ -105,36 +149,24 @@ Shape:
 
     if (!response.ok) {
       console.error(`  ✗ Claude incident-summarizer error: ${response.status}`);
-      return;
+      return null;
     }
 
     const data = (await response.json()) as {
       content?: Array<{ text?: string }>;
     };
     const raw = data.content?.[0]?.text ?? "";
-    const parsed = parseSummary(raw);
-    if (!parsed) return;
-
-    await prisma.incident.update({
-      where: { id: incidentId },
-      data: {
-        title: parsed.title,
-        rootCause: parsed.rootCause,
-      },
-    });
-
-    console.log(
-      `  🧠 Incident ${incidentId.slice(0, 8)} retitled: "${parsed.title}"`
-    );
+    return parseSummary(raw);
   } catch (err) {
     console.error("  ✗ incident-summarizer failed:", err);
+    return null;
   }
 }
 
-function parseSummary(raw: string): SummaryOutput | null {
+function parseSummary(raw: string): IncidentSummaryOutput | null {
   try {
     const clean = raw.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(clean) as Partial<SummaryOutput>;
+    const parsed = JSON.parse(clean) as Partial<IncidentSummaryOutput>;
     if (typeof parsed.title !== "string" || !parsed.title.trim()) return null;
     if (typeof parsed.rootCause !== "string" || !parsed.rootCause.trim()) return null;
     // Cap title at 120 chars so a runaway response doesn't break the UI.

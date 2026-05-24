@@ -12,6 +12,42 @@ import type { ClassificationResult } from "@asp/shared";
 
 const MAX_SUGGESTIONS = 3;
 
+export interface KbArticleForScoring {
+  id: string;
+  category: string | null;
+  productArea: string | null;
+  tags: string[];
+}
+
+export interface ScoredArticle {
+  id: string;
+  score: number;
+}
+
+// Pure scoring fn — exported so evals can target it directly without a DB.
+// Inputs are exactly what a retrieval system would feed in; output is the
+// ranked top-N with normalized scores in [0, 1].
+export function scoreKbMatches(
+  classification: ClassificationResult,
+  articles: KbArticleForScoring[]
+): ScoredArticle[] {
+  return articles
+    .map((a) => {
+      let score = 0;
+      if (a.category === classification.category) score += 1;
+      if (a.productArea && a.productArea === classification.productArea)
+        score += 1;
+      const tagOverlap = a.tags.filter((t) =>
+        classification.tags.includes(t)
+      ).length;
+      if (tagOverlap > 0) score += Math.min(1, tagOverlap / 3);
+      return { id: a.id, score: score / 3 };
+    })
+    .filter((a) => a.score >= 0.34)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_SUGGESTIONS);
+}
+
 export async function findSuggestedResolutions(
   ticketId: string,
   classification: ClassificationResult | null
@@ -38,22 +74,7 @@ export async function findSuggestedResolutions(
 
   if (articles.length === 0) return;
 
-  // Score each article. Max possible = 1 (category) + 1 (productArea) + 1 (tag overlap).
-  const scored = articles
-    .map((a) => {
-      let score = 0;
-      if (a.category === classification.category) score += 1;
-      if (a.productArea && a.productArea === classification.productArea)
-        score += 1;
-      const tagOverlap = a.tags.filter((t) =>
-        classification.tags.includes(t)
-      ).length;
-      if (tagOverlap > 0) score += Math.min(1, tagOverlap / 3);
-      return { id: a.id, score: score / 3 }; // normalize to 0–1
-    })
-    .filter((a) => a.score >= 0.34) // at least one strong signal
-    .sort((a, b) => b.score - a.score)
-    .slice(0, MAX_SUGGESTIONS);
+  const scored = scoreKbMatches(classification, articles);
 
   if (scored.length === 0) return;
 

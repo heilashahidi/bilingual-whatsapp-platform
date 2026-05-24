@@ -1,4 +1,4 @@
-import { judgeWithClaude } from "./judge";
+import { judgeWithClaude } from "../_lib/judge";
 
 interface TranslationOutput {
   translatedText: string;

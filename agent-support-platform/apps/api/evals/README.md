@@ -1,98 +1,129 @@
 # Evals
 
-Braintrust evals for the LLM call sites in `apps/api`.
-Today: **classification**, **translation** (with LLM-as-judge).
-Pattern is reusable for reply-suggester, kb-search, and incident-summarizer
-— see "Adding a new eval" below.
+Braintrust evals for every LLM call site in `apps/api`:
+
+- **`classification/`** — message → category/severity/tags/productArea
+- **`translation/`** — bi-directional en↔ht/fr/es with LLM-as-judge
+- **`reply-suggester/`** — operator reply drafts (3 tones)
+- **`kb-search/`** — pure scoring retrieval of relevant knowledge articles
+- **`incident-summarizer/`** — title + root-cause hypothesis for clustered incidents
 
 ## Run
 
 From `apps/api/`:
 
 ```sh
-# Local-only — no Braintrust account or API key needed. Prints summary.
+# Local-only — runs all 5 evals. LLM-judge scorers gracefully skip without ANTHROPIC_API_KEY.
 pnpm eval:offline
 
-# Online — uploads to braintrust.dev for diffs across runs and trace UI.
+# Online — uploads to braintrust.dev for diffs across runs and the trace UI.
 # Requires BRAINTRUST_API_KEY (https://www.braintrust.dev/app/settings/api-keys).
 pnpm eval
+
+# Single eval at a time:
+npx braintrust eval --no-send-logs evals/reply-suggester
+
+# Trace what the LLM judge is actually returning:
+DEBUG_JUDGE=1 npx braintrust eval --no-send-logs evals/translation
 ```
 
-By default, evals run against the dev stubs. Flip env vars to eval real models:
+By default, the production call sites that have a stub fallback (translation,
+classification) run against the stub. Flip env flags to eval the real models:
 
 ```sh
-USE_REAL_CLASSIFICATION=true ANTHROPIC_API_KEY=sk-... pnpm eval:offline
-USE_REAL_TRANSLATION=true    ANTHROPIC_API_KEY=sk-... pnpm eval:offline
+USE_REAL_CLASSIFICATION=true USE_REAL_TRANSLATION=true \
+  ANTHROPIC_API_KEY=sk-... pnpm eval:offline
 ```
 
-The translation eval also uses Claude as a judge (semantic accuracy + fluency).
-Without `ANTHROPIC_API_KEY` those scorers return a `skipped` marker rather than
-failing — non-LLM scorers (preservation, language detection, length, pass-through)
-keep working.
+The LLM-as-judge scorers (accuracy, fluency, faithfulness, hallucination,
+helpfulness, actionability) use Claude Sonnet because it follows scoring
+rubrics more strictly than Haiku — see `_lib/judge.ts`.
 
 ## What gets scored
 
-### Classification (`evals/classification/`)
+### `classification/` — 20 cases (en/ht/fr/es)
 | Scorer | Range | Signal |
 |---|---|---|
-| `category_match` | 0/1 | Exact match on the 5-category label |
-| `severity_proximity` | 0–1 | Adjacent severities get partial credit (high↔critical = 0.5) |
+| `category_match` | 0/1 | Exact match on 5-category label |
+| `severity_proximity` | 0–1 | Adjacent severities partial credit (high↔critical = 0.5) |
 | `product_area_match` | 0/1 | Exact match on product area |
-| `connectivity_flag` | 0/1 | Did the model correctly flag a network-vs-app issue? |
-| `confidence_calibration` | 0–1 | Penalizes overconfident-and-wrong; rewards appropriately uncertain |
+| `connectivity_flag` | 0/1 | Network-vs-app distinction |
+| `confidence_calibration` | 0–1 | Penalizes overconfident-and-wrong |
 | `tag_overlap` | 0–1 | Jaccard similarity on tag sets |
 
-### Translation (`evals/translation/`)
+### `translation/` — 20 cases (en↔ht, en↔fr, en↔es, preservation, pass-through, tone)
 | Scorer | Range | Signal | Needs key? |
 |---|---|---|---|
-| `language_detection` | 0/1 | Did `detectedLanguage` match the source? | no |
-| `preservation` | 0–1 | Required tokens (numbers, IDs, error codes) survived verbatim | no |
+| `language_detection` | 0/1 | `detectedLanguage` matches source | no |
+| `preservation` | 0–1 | Numbers / error codes / IDs survived verbatim | no |
 | `length_sanity` | 0/1 | Output length within 0.5–2× of reference | no |
 | `pass_through_exact` | 0/1 | source==target ⇒ output==input, confidence==1.0 | no |
-| `accuracy_judge` | 0–1 | Claude-as-judge: semantic match to reference translation | yes |
-| `fluency_judge` | 0–1 | Claude-as-judge: native-sounding in target language | yes |
+| `accuracy_judge` | 0–1 | Claude Sonnet: semantic match to reference | yes |
+| `fluency_judge` | 0–1 | Claude Sonnet: native-sounding in target language | yes |
 
-Each scorer's `metadata` field surfaces predicted-vs-expected values (or judge
-rationale) in the Braintrust UI for quick diffing.
+### `reply-suggester/` — 5 scenarios (en, multi-turn, KB hint, vague complaint, connectivity)
+| Scorer | Range | Signal | Needs key? |
+|---|---|---|---|
+| `has_three_suggestions` | 0/1 | Always returns exactly 3 drafts | no |
+| `distinct_tones` | 0–1 | All three tones (direct/empathetic/investigative) present | no |
+| `length_sanity` | 0–1 | Each draft 30–500 chars | no |
+| `fact_reference` | 0–1 | Required facts (account number, error code) appear in ≥1 draft | no |
+| `hallucination_judge` | 0–1 | Claude Sonnet: no invented details | yes |
+| `helpfulness_judge` | 0–1 | Claude Sonnet: best draft advances toward the ideal next step | yes |
+
+### `kb-search/` — 6 retrieval scenarios (all offline, no API key needed)
+| Scorer | Range | Signal |
+|---|---|---|
+| `recall` | 0–1 | Fraction of expected-relevant IDs returned |
+| `precision` | 0–1 | Fraction of returned IDs that were actually relevant |
+| `mrr` | 0–1 | Mean reciprocal rank — 1/rank of first relevant hit |
+| `no_forbidden` | 0/1 | Hard fail if any forbidden article appears |
+| `scores_in_range` | 0–1 | All scores in (0.34, 1.0] |
+
+### `incident-summarizer/` — 4 cluster scenarios
+| Scorer | Range | Signal | Needs key? |
+|---|---|---|---|
+| `produces_non_null` | 0/1 | Returns title + rootCause | no |
+| `title_length` | 0/0.5/1 | ≤80 = 1, ≤120 = 0.5, >120 = 0 | no |
+| `title_mentions` | 0–1 | Title references expected feature/location keywords | no |
+| `no_hallucinated_mentions` | 0/1 | Title doesn't reference version numbers / error codes never given | no |
+| `faithfulness_judge` | 0–1 | Claude Sonnet: every claim grounded in the reports | yes |
+| `actionability_judge` | 0–1 | Claude Sonnet: useful for an on-call engineer waking up to a page | yes |
 
 ## Datasets
 
-- `classification/dataset.ts` — 20 cases across en/ht/fr/es. Bug reports,
-  operational complaints, feature requests, questions, connectivity.
-- `translation/dataset.ts` — 20 cases covering en↔ht, en↔fr, en↔es, plus
-  preservation (numbers, error codes, reference IDs), pass-through
-  (source==target), and tone/register cases.
-
-Extend datasets as production traffic reveals failure modes worth pinning
-behavior on — aim for ~5–10 new cases per iteration, not massive batches.
+Each eval folder has a `dataset.ts` with `~5–20` hand-curated cases covering
+the most common scenarios + 1–2 deliberately hard edge cases. Extend as
+production traffic reveals failure modes worth pinning behavior on — aim
+for `5–10` new cases per iteration, not massive batches.
 
 ## Adding a new eval
-
-Mirror the structure for any other LLM call site:
 
 ```
 evals/
   <call-site>/
-    dataset.ts            # ClassificationCase-style array (input + expected + metadata)
-    scorers.ts            # async ({ output, expected }) => ({ name, score })
+    dataset.ts            # Array of { input, expected, metadata }
+    scorers.ts            # async ({ input, output, expected }) => { name, score, metadata? }
     <call-site>.eval.ts   # Eval("name", { data, task, scores })
 ```
 
-The `braintrust eval evals` command autodiscovers any `*.eval.ts` under
-`evals/`, so you don't need to register new files anywhere.
+The `braintrust eval evals` command autodiscovers any `*.eval.ts` recursively,
+so you don't need to register new files anywhere. For LLM-as-judge scorers,
+import `judgeWithClaude` from `../_lib/judge`.
 
-## CI (optional)
+## Production code requirements
 
-To gate PRs on regressions, add a step to `.github/workflows/ci.yml`:
+For an LLM call site to be evalable, the LLM-calling logic must accept
+structured context (not just a DB ID). The pattern used here is:
 
-```yaml
-- name: Run evals
-  env:
-    BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
-    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-    USE_REAL_CLASSIFICATION: "true"
-  run: pnpm --filter @asp/api eval
-```
+- Thin wrapper that takes a DB ID and pulls the context: `summarizeIncident(id)`
+- Pure exported function the eval targets: `generateIncidentSummary(context)`
 
-Braintrust will diff scores against the last main-branch run and surface
-regressions inline on the PR.
+If a call site doesn't have this split, refactor it first (it's a small
+non-breaking change and improves general testability).
+
+## CI
+
+See `.github/workflows/evals.yml` (when added). Suggested gating: run on every
+PR with `BRAINTRUST_API_KEY` + `ANTHROPIC_API_KEY` secrets, fail if any score
+regresses >5% vs the main-branch baseline.

@@ -16,10 +16,21 @@ export type { ReplySuggestion };
 // returns an empty array rather than throwing, so the composer just hides
 // the suggestions UI without breaking anything else.
 
-interface ConversationMessageForPrompt {
+export interface ConversationMessageForPrompt {
   who: "agent" | "operator";
   text: string;
   age: string;
+}
+
+export interface ReplySuggesterContext {
+  conversation: ConversationMessageForPrompt[];
+  agentName: string;
+  agentCountry: string;
+  branchName: string;
+  category: string;
+  severity: string;
+  tags: string[];
+  kbHints: Array<{ title: string; resolution: string }>;
 }
 
 export async function suggestReplies(
@@ -55,22 +66,31 @@ export async function suggestReplies(
   ).length;
   if (inboundCount === 0) return [];
 
-  const conversation = buildConversationForPrompt(ticket.messages);
-  const kbHints = ticket.suggestedResolutions.map((s) => ({
-    title: s.article.title,
-    resolution: s.article.resolutionText,
-  }));
-
-  const prompt = buildPrompt({
-    conversation,
+  return generateReplySuggestions({
+    conversation: buildConversationForPrompt(ticket.messages),
     agentName: ticket.agent.name,
     agentCountry: ticket.agent.country,
     branchName: ticket.agent.branch.name,
     category: ticket.category,
     severity: ticket.severity,
     tags: ticket.tags,
-    kbHints,
+    kbHints: ticket.suggestedResolutions.map((s) => ({
+      title: s.article.title,
+      resolution: s.article.resolutionText,
+    })),
   });
+}
+
+// Pure LLM-calling path: takes already-assembled context, asks Claude for
+// suggestions, parses. Exported so evals can target it directly without
+// needing a populated database.
+export async function generateReplySuggestions(
+  context: ReplySuggesterContext
+): Promise<ReplySuggestion[]> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return [];
+
+  const prompt = buildPrompt(context);
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -137,18 +157,7 @@ function humanAge(ms: number): string {
   return `${days}d ago`;
 }
 
-interface PromptInput {
-  conversation: ConversationMessageForPrompt[];
-  agentName: string;
-  agentCountry: string;
-  branchName: string;
-  category: string;
-  severity: string;
-  tags: string[];
-  kbHints: Array<{ title: string; resolution: string }>;
-}
-
-function buildPrompt(input: PromptInput): string {
+function buildPrompt(input: ReplySuggesterContext): string {
   const convoBlock = input.conversation
     .map((m) => `[${m.who}, ${m.age}]: ${m.text}`)
     .join("\n");
