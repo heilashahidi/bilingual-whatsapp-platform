@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-05-24
+
+Eval-suite hardening + one prompt change to the incident summarizer surfaced by the eval suite. No user-visible API or schema changes.
+
+### Changed
+- **Incident summarizer prompt** (`apps/api/src/services/incident-summarizer.ts`). Root cause is now structured as *exactly* one primary hypothesis tied to report evidence + one concrete first verification step (was: free-form 1–3 sentences). Adds a connectivity false-positive heuristic so cross-region clusters of agent-side network symptoms are explicitly flagged as likely independent local noise rather than a single platform incident. See [AI_USAGE.md §2.4](docs/AI_USAGE.md#24-incident-summaries).
+
+### Fixed
+- **Eval offline semantics.** Judge-based scorers (`AccuracyJudge`, `FluencyJudge`, `HallucinationJudge`, `HelpfulnessJudge`, `FaithfulnessJudge`, `ActionabilityJudge`) are now registered only when `ANTHROPIC_API_KEY` is present, so `pnpm eval:offline` without credentials reports clean partial coverage instead of synthetic 0-scores on every judge metric.
+- **Judge JSON-parse resilience** (`apps/api/evals/_lib/judge.ts`). Malformed model output now returns `null` (scorer reports `skipped: judge_unavailable`) rather than throwing and tanking the whole eval run.
+- **`kb-search` `ScoresInRange` boundary** — was `score <= 0.34`, now `score < 0.34` to match the production filter's inclusive lower bound.
+
 ## [0.4.0] - 2026-05-23
 
 End-to-end latency resilience for field agents on slow third-world mobile networks. Focused on shaving server-side latency *and* on never silently losing a message when a flaky Twilio/WhatsApp leg fails.

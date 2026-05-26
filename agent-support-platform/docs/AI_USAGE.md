@@ -124,9 +124,16 @@ triggered them.
   region / tag metadata.
 - **Output:** rewrites the mechanical incident title ("Bug Report surge
   — Haiti") into something specific ("Login screen frozen across HT
-  branches"), plus a 1–3 sentence root-cause hypothesis with a
-  suggested next investigation step. Stored on `Incident.title` and
-  `Incident.rootCause`.
+  branches"), plus a structured 1–2 sentence root cause: exactly one
+  primary hypothesis tied to report evidence + one concrete first
+  verification step for the on-call engineer. Stored on `Incident.title`
+  and `Incident.rootCause`.
+- **Connectivity false-positive heuristic:** if the contributing
+  tickets are mostly agent-side connectivity symptoms (weak signal,
+  bad wifi, spotty mobile data) across *different* countries/regions/
+  branches, the prompt instructs the model to call out that this is
+  likely independent local network noise rather than a single platform
+  incident, and to propose triage/suppression as the first step.
 - **Fire-and-forget:** runs after the incident is created with the
   mechanical title, so a slow Claude call never blocks clustering.
   Socket events are re-emitted after the rewrite so the dashboard
