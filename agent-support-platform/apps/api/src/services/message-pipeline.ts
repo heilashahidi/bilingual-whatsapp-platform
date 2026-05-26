@@ -13,7 +13,7 @@ function toLanguage(value: string | null | undefined, fallback: Language): Langu
 }
 import { emitTicketEvent } from "./realtime";
 import { findSuggestedResolutions } from "./kb-search";
-import { notifyNewTicket } from "./notifier";
+import { notifyNewTicket, notifyQuarantinedMessage } from "./notifier";
 import { recordEvent } from "./audit";
 import { clusterTicket } from "./incident-clusterer";
 import { translateMessage } from "../integrations/translation";
@@ -21,6 +21,7 @@ import { classifyMessage } from "../integrations/classification";
 import { isLikelyEnglish } from "./language-detection";
 import { buildIntakePrompt } from "./intake-prompter";
 import { enqueueOutbound } from "./outbound-queue";
+import { redactPII } from "./pii-redactor";
 
 /**
  * Process an inbound message through the full pipeline:
@@ -47,8 +48,11 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
   });
 
   if (!agent) {
-    // Auto-register unknown agents. In production, you'd validate against
-    // an agent registry. For Phase 1, auto-create with defaults.
+    // Auto-register unknown agents into the *quarantine* state. They
+    // get an Agent row so downstream foreign keys work, but verifiedAt
+    // stays null — see §5.1 below for the downstream gate. An admin
+    // must explicitly promote them via POST /api/agents/:id/verify
+    // before their tickets enter the normal flow.
     const country = raw.metadata.countryCode as "HT" | "DO" | "CD";
     const defaultLanguage = country === "HT" ? "ht" : country === "DO" ? "es" : "fr";
 
@@ -71,11 +75,22 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
         country,
         preferredLanguage: defaultLanguage,
         branchId: branch.id,
+        // verifiedAt intentionally omitted — defaults to null = quarantined.
       },
       include: { branch: true },
     });
-    console.log(`  ✓ Auto-registered new agent: ${agent.name} (${agent.phoneNumber})`);
+    console.log(`  🕵️ Quarantined new agent: ${agent.name} (${agent.phoneNumber}) — awaiting verification`);
   }
+
+  // ─── Step 2b: Sender verification gate (SECURITY.md §5.1) ────
+  // Treat the From number as untrusted until it's been promoted by an
+  // admin/operations user. We still persist the message and create a
+  // ticket so the quarantine queue has something to review, but we
+  // skip every downstream action that would either (a) signal real
+  // support to the sender (auto-intake reply) or (b) propagate the
+  // message into ops surfaces (Slack notify, KB suggestions, incident
+  // clustering). A rejected number stays quarantined permanently.
+  const agentIsTrusted = agent.verifiedAt !== null && agent.rejectedAt === null;
 
   // Update agent last seen and connectivity status
   await prisma.agent.update({
@@ -211,16 +226,42 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
   };
 
   if (raw.textBody) {
-    if (isLikelyEnglish(raw.textBody)) {
+    // PII redaction (SECURITY.md §5.2). Strip card numbers, OTPs,
+    // emails, and unrelated phone numbers from the text BEFORE it's
+    // sent to Anthropic for translation or classification. The
+    // redacted form is what Claude sees and what ends up in
+    // Message.translatedText after the patch below; the original
+    // text (with PII intact) stays in raw.textBody → originalText,
+    // covered by encryption-at-rest.
+    const redacted = redactPII(raw.textBody, { preservePhone: agent.phoneNumber });
+    if (redacted.hadAny) {
+      const summary = Object.entries(redacted.redactions)
+        .filter(([, n]) => n > 0)
+        .map(([k, n]) => `${k}:${n}`)
+        .join(" ");
+      console.log(`  🛡 PII redacted before LLM call (${summary})`);
+      recordEvent({
+        ticketId: ticket!.id,
+        action: "redacted_for_llm",
+        actor: null,
+        // Counts only — never the values. Pre-LLM redaction events
+        // are queryable for "how often do agents paste sensitive
+        // data" without persisting the data itself.
+        payload: { messageId: message.id, counts: redacted.redactions },
+      });
+    }
+    const textForLlm = redacted.text;
+
+    if (isLikelyEnglish(textForLlm)) {
       // Short-circuit: source is English → no translation needed,
       // classify the original text directly.
-      translatedText = raw.textBody;
+      translatedText = textForLlm;
       detectedLanguage = "en";
       translationConfidence = 1.0;
       console.log(`  ✓ Skipped translation (en → en, heuristic)`);
 
       try {
-        classification = await classifyMessage(raw.textBody);
+        classification = await classifyMessage(textForLlm);
         console.log(`  ✓ Classified: ${classification.category} / ${classification.severity} [${classification.tags.join(", ")}]`);
       } catch (error) {
         console.error("  ✗ Classification failed — defaulting to other/medium:", error);
@@ -230,8 +271,8 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
       // Parallel path: kick off translate + classify simultaneously
       // against the ORIGINAL-language text.
       const [translationResult, classifyResult] = await Promise.allSettled([
-        translateMessage(raw.textBody, "en"),
-        classifyMessage(raw.textBody),
+        translateMessage(textForLlm, "en"),
+        classifyMessage(textForLlm),
       ]);
 
       if (translationResult.status === "fulfilled") {
@@ -243,8 +284,12 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
         translationConfidence = translationResult.value.confidence;
         console.log(`  ✓ Translated (${detectedLanguage} → en): "${translatedText?.substring(0, 80)}..."`);
       } else {
-        console.error("  ✗ Translation failed — using original text:", translationResult.reason);
-        translatedText = raw.textBody;
+        // Translation failed — fall back to the redacted form (NOT
+        // raw.textBody) so we never persist PII into translatedText.
+        // raw.textBody is preserved in originalText where field-level
+        // encryption-at-rest applies.
+        console.error("  ✗ Translation failed — using redacted text:", translationResult.reason);
+        translatedText = textForLlm;
       }
 
       if (classifyResult.status === "fulfilled") {
@@ -263,7 +308,7 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
         classification &&
         classification.confidence < 0.7 &&
         translationResult.status === "fulfilled" &&
-        translatedText !== raw.textBody
+        translatedText !== textForLlm
       ) {
         console.log(`  ↻ Low-confidence (${classification.confidence}) — re-classifying on translated text…`);
         try {
@@ -373,8 +418,10 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
 
   // ─── Step 7: Pin KB suggestions for new tickets ───────────
   // Only on new tickets — appending a message to an existing one
-  // shouldn't reshuffle existing suggestions.
-  if (shouldCreateNew && classification) {
+  // shouldn't reshuffle existing suggestions. Skipped for quarantined
+  // tickets: KB suggestions are an ops affordance, and we don't want
+  // to surface a scammer's message into the KB workflow.
+  if (shouldCreateNew && classification && agentIsTrusted) {
     try {
       await findSuggestedResolutions(ticket!.id, classification);
     } catch (error) {
@@ -383,8 +430,12 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
   }
 
   // ─── Step 8: Slack notify for critical/high ────────────────
-  // Fire-and-forget so a slow Slack response doesn't block.
-  if (shouldCreateNew) {
+  // Fire-and-forget so a slow Slack response doesn't block. Trusted
+  // agents route through #agent-issues / #agent-critical; quarantined
+  // agents route through #agent-security (see notifyQuarantinedMessage
+  // below) so admins see the scam-attempt traffic separately from
+  // real operator work.
+  if (shouldCreateNew && agentIsTrusted) {
     notifyNewTicket({
       ticketId: ticket!.id,
       severity: ticket!.severity,
@@ -411,7 +462,13 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
   // conversation is in English), retries on transient Twilio failure,
   // and persists as a pending → sent message row visible in the
   // dashboard timeline like any operator reply.
-  if (shouldCreateNew && classification) {
+  //
+  // CRITICAL: never auto-respond to an unverified or rejected sender.
+  // The auto-intake reply functions as confirmation that this number
+  // reached real support — exactly the signal a scammer wants. The
+  // gate also blocks the reply from being charged to our Twilio
+  // account for spam volume.
+  if (shouldCreateNew && classification && agentIsTrusted) {
     const intake = buildIntakePrompt({
       category: ticket!.category,
       severity: ticket!.severity,
@@ -466,10 +523,40 @@ export async function processInboundMessage(raw: RawMessage): Promise<void> {
   // don't change anything cluster-wise. Fire-and-forget so a slow cluster
   // check never blocks the pipeline; the dashboard will pick up the
   // resulting incident via the realtime event the clusterer emits.
-  if (shouldCreateNew) {
+  // Quarantined tickets must never enter clustering: a coordinated
+  // scam wave would otherwise form a synthetic "incident" and pull
+  // operator attention onto attacker-shaped data.
+  if (shouldCreateNew && agentIsTrusted) {
     clusterTicket(ticket!.id).catch((err) =>
       console.error("  ✗ incident clustering failed:", err)
     );
+  }
+
+  // ─── Step 10b: Quarantine bookkeeping ──────────────────────
+  // For untrusted senders we still want a visible signal: an Event
+  // row so the activity timeline tells the truth, and a Slack ping
+  // to the security channel so an admin can review and verify or
+  // reject the number.
+  if (shouldCreateNew && !agentIsTrusted) {
+    recordEvent({
+      ticketId: ticket!.id,
+      action: "quarantined",
+      actor: null,
+      payload: {
+        agentId: agent.id,
+        agentPhone: agent.phoneNumber,
+        reason: agent.rejectedAt ? "rejected" : "unverified",
+      },
+    });
+    notifyQuarantinedMessage({
+      agentId: agent.id,
+      ticketId: ticket!.id,
+      agentPhone: agent.phoneNumber,
+      agentCountry: agent.country,
+      profileName: raw.metadata.profileName || null,
+      reason: agent.rejectedAt ? "rejected" : "unverified",
+      messageSnippet: translatedText || raw.textBody || "",
+    }).catch((err) => console.error("  ✗ quarantine notifier failed:", err));
   }
 
   console.log("─── Pipeline complete ───\n");

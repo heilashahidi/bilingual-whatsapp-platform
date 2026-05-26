@@ -1,5 +1,6 @@
 import { prisma } from "./database";
 import type { ReplySuggestion } from "@asp/shared";
+import { redactText } from "./pii-redactor";
 
 export type { ReplySuggestion };
 
@@ -158,15 +159,20 @@ function humanAge(ms: number): string {
 }
 
 function buildPrompt(input: ReplySuggesterContext): string {
+  // PII redaction (SECURITY.md §5.2). Operator-facing reply drafts
+  // are a top leakage surface — the conversation may contain a
+  // customer card number an agent pasted upstream, and we don't
+  // want Claude (or its logs) to see it. KB hints can also carry
+  // leaked specifics from a poorly-scrubbed article. Redact both.
   const convoBlock = input.conversation
-    .map((m) => `[${m.who}, ${m.age}]: ${m.text}`)
+    .map((m) => `[${m.who}, ${m.age}]: ${redactText(m.text)}`)
     .join("\n");
 
   const kbBlock = input.kbHints.length
     ? input.kbHints
         .map(
           (h, i) =>
-            `[KB-${i + 1}] ${h.title}\n     Resolution: ${truncate(h.resolution, 240)}`
+            `[KB-${i + 1}] ${redactText(h.title)}\n     Resolution: ${redactText(truncate(h.resolution, 240))}`
         )
         .join("\n")
     : "(no pinned KB articles for this ticket)";

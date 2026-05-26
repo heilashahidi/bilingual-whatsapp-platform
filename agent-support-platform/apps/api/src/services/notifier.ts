@@ -72,6 +72,60 @@ export async function notifyMention(input: {
   });
 }
 
+// SECURITY.md §5.1 — fires when an unverified or rejected number sends an
+// inbound message. Goes to a dedicated #agent-security channel (configured
+// via SLACK_WEBHOOK_URL_SECURITY; falls back to the default channel if
+// unset). The point is to make scam-attempt traffic visible to admins
+// without polluting #agent-issues with operator noise.
+export async function notifyQuarantinedMessage(input: {
+  agentId: string;
+  ticketId: string;
+  agentPhone: string;
+  agentCountry: string;
+  profileName: string | null;
+  reason: "unverified" | "rejected";
+  messageSnippet: string;
+}): Promise<void> {
+  const dashboardUrl = process.env.DASHBOARD_BASE_URL
+    ? `${process.env.DASHBOARD_BASE_URL}/agents?verification=${input.reason === "rejected" ? "rejected" : "pending"}&highlight=${input.agentId}`
+    : null;
+
+  const reasonText =
+    input.reason === "rejected"
+      ? "🚫 *Message from a rejected number* (previously flagged as a scammer/spammer)"
+      : "🕵️ *Message from an unverified number* (not yet promoted to a known agent)";
+
+  await sendSlackMessage({
+    webhookUrlEnv: "SLACK_QUARANTINE_WEBHOOK_URL",
+    text: `Quarantined inbound from ${input.agentPhone} (${input.agentCountry}): "${input.messageSnippet.slice(0, 200)}"`,
+    blocks: [
+      { type: "section", text: { type: "mrkdwn", text: reasonText } },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*From:* ${input.agentPhone} (${input.agentCountry})${input.profileName ? ` · profile "${input.profileName}"` : ""}\n*Message:* ${input.messageSnippet.slice(0, 500)}`,
+        },
+      },
+      ...(dashboardUrl
+        ? [
+            {
+              type: "actions",
+              elements: [
+                {
+                  type: "button",
+                  text: { type: "plain_text", text: "Review in quarantine" },
+                  url: dashboardUrl,
+                  style: "primary",
+                },
+              ],
+            },
+          ]
+        : []),
+    ],
+  });
+}
+
 export async function notifyNewTicket(input: {
   ticketId: string;
   severity: string;

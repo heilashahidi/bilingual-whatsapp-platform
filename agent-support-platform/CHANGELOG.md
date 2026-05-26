@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Security + compliance foundation. Introduces a threat-model document the rest of the codebase will be reviewed against, plus the first concrete control: inbound sender verification.
+
+### Added
+- **[SECURITY.md](docs/SECURITY.md).** Threat model and control inventory for the platform — data classification, ten-scenario threat model (WhatsApp-scam aware), what's already in place, what's still open, compliance posture (SOC 2 anchor, PCI out-of-scope by design, BRH/SB/BCC notes), and incident-response steps. Reviewer checklist for any PR touching message handling, LLM calls, auth, or audit code.
+- **Inbound sender verification (SECURITY.md §5.1).** New `Agent.verifiedAt` / `Agent.rejectedAt` timestamps. Unknown inbound numbers auto-create an `Agent` row but stay quarantined (verifiedAt null) — their tickets are persisted for review but the pipeline skips Slack notify, auto-intake replies, KB suggestions, and incident clustering until an admin promotes them. Quarantine traffic surfaces via a new `notifyQuarantinedMessage` Slack channel (`SLACK_QUARANTINE_WEBHOOK_URL`). Existing agents are backfilled as verified-at-creation so behavior for known numbers is unchanged.
+- **`POST /api/agents/:id/verify`** (admin, operations) and **`POST /api/agents/:id/reject`** (admin) to manage the quarantine queue. Both emit per-ticket audit events (`agent_verified` / `agent_rejected`).
+- **`GET /api/agents?verification=verified|pending|rejected|all`.** New filter; defaults to `verified` so the existing list view is unchanged.
+- **PII redaction before LLM calls (SECURITY.md §5.2).** New `pii-redactor.ts` strips Luhn-valid card numbers, multilingual OTPs (English / Haitian Creole / French / Spanish keywords), E.164 phone numbers (preserving the agent's own number for translation context), email addresses, and bare 8–20 digit account-number-shaped runs. Wired into all five Anthropic surfaces: inbound translation, inbound classification, reply suggester, KB drafter, and incident summarizer. Redaction events on the inbound path log counts (not values) to `Event` for compliance queryability.
+- **Audit vocabulary expanded.** `quarantined`, `agent_verified`, `agent_rejected`, `redacted_for_llm` added to `AuditAction`. Dashboard activity timeline renders each.
+- **Slack webhook routing.** `sendSlackMessage` now accepts an optional `webhookUrlEnv` to route to a non-default channel (used by the quarantine notifier).
+- **`/agents` dashboard page.** Verification queue UI with `Pending review` / `Verified` / `Rejected` / `All` tabs, per-row Verify and Reject actions, and a nav badge that surfaces the count of numbers waiting for admin review. The Slack quarantine notification deep-links to `/agents?verification=pending&highlight=<agentId>` so an admin lands on the right row from a Slack alert.
+
+### Migration
+- `20260526120000_add_agent_verification` — adds the two timestamps, indexes them, and backfills existing rows.
+
 ## [0.4.1] - 2026-05-24
 
 Eval-suite hardening + one prompt change to the incident summarizer surfaced by the eval suite. No user-visible API or schema changes.

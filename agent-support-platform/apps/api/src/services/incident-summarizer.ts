@@ -1,4 +1,5 @@
 import { prisma } from "./database";
+import { redactText } from "./pii-redactor";
 
 // Given an incident id, read its contributing tickets and ask Claude
 // Haiku to generate a descriptive title and a one-paragraph root-cause
@@ -104,10 +105,15 @@ export async function generateIncidentSummary(
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
 
+  // PII redaction (SECURITY.md §5.2) — each first-message snippet is
+  // raw agent-typed text and may contain customer card numbers, OTPs,
+  // or unrelated phone numbers carried over from upstream. Redact
+  // before assembling the prompt so the incident summarizer's call
+  // to Claude carries placeholders, not customer data.
   const ticketLines = context.tickets.map((t, i) => {
     const branch = t.branchRegion ? `${t.branchName} (${t.branchRegion})` : t.branchName;
     const tags = t.tags.length ? ` [${t.tags.join(", ")}]` : "";
-    return `${i + 1}. ${branch}: "${truncate(t.firstMessageText, 160)}"${tags}`;
+    return `${i + 1}. ${branch}: "${redactText(truncate(t.firstMessageText, 160))}"${tags}`;
   });
 
   const branchSet = new Set(context.tickets.map((t) => t.branchName));

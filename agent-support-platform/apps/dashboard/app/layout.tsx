@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AgentsNavLink } from "./_components/agents-nav-link";
 import { AuthSessionProvider } from "./_components/session-provider";
 import { IncidentsNavLink } from "./_components/incidents-nav-link";
 import { KeyboardShortcuts } from "./_components/keyboard-shortcuts";
@@ -39,6 +40,7 @@ export default function RootLayout({
                   <Link href="/knowledge" className="hover:text-slate-900">
                     Knowledge
                   </Link>
+                  <AgentsNavLink />
                 </nav>
               </div>
               <div className="flex items-center gap-3">

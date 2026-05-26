@@ -121,4 +121,8 @@ export type AuditAction =
   | "resolved"
   | "deleted"
   | "clustered"
-  | "incident_formed";
+  | "incident_formed"
+  | "quarantined"        // ticket created from an unverified sender (SECURITY.md §5.1)
+  | "agent_verified"     // admin promoted the agent out of quarantine
+  | "agent_rejected"     // admin marked the agent as a confirmed scammer/spammer
+  | "redacted_for_llm";  // PII stripped before an Anthropic call (SECURITY.md §5.2)

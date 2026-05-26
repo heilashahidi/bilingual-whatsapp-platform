@@ -417,6 +417,9 @@ async function ensureAgent(
       country: demo.country,
       preferredLanguage: demo.language as Language,
       branchId,
+      // Demo data is by definition trusted — pre-verify so the seeded
+      // tickets exercise the trusted flow (SECURITY.md §5.1).
+      verifiedAt: new Date(),
     },
   });
   return created.id;

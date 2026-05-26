@@ -59,10 +59,22 @@ model Agent {
   branch              Branch             @relation(fields: [branchId], references: [id])
   connectivityStatus  ConnectivityStatus @default(unknown)
   lastSeenAt          DateTime?
+  // Sender verification (SECURITY.md §5.1). An agent is "trusted" only
+  // when verifiedAt is set — unknown inbound numbers auto-create an
+  // Agent row with verifiedAt = null and their tickets are quarantined
+  // (no Slack notify, no auto-intake, no KB suggestions, no clustering)
+  // until an admin promotes them. rejectedAt is set when an admin marks
+  // the number as a confirmed scammer/spammer — also keeps them
+  // quarantined and surfaces in the rejected view.
+  verifiedAt          DateTime?
+  rejectedAt          DateTime?
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
   tickets             Ticket[]
   botConversations    BotConversation[]
+
+  @@index([verifiedAt])
+  @@index([rejectedAt])
 }
 
 // ─── Tickets & Messages ─────────────────────────────────────

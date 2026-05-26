@@ -7,6 +7,8 @@
 // mechanical title + concatenation in that case, so KB drafts always
 // get created even without Claude.
 
+import { redactText } from "./pii-redactor";
+
 export interface KbDraft {
   title: string;
   problemDescription: string;
@@ -32,8 +34,14 @@ export async function draftKbArticle(
     return null;
   }
 
+  // PII redaction (SECURITY.md §5.2). KB drafts are the highest-leverage
+  // PII leak: a generated article can outlive the ticket it came from,
+  // and a single un-scrubbed customer name or PAN that survives the
+  // approval gate (§5.8) becomes a recurring leakage surface every time
+  // the article is suggested. Redact aggressively here even though the
+  // approval flow exists downstream.
   const convoBlock = ctx.conversation
-    .map((m) => `[${m.who}]: ${m.text}`)
+    .map((m) => `[${m.who}]: ${redactText(m.text)}`)
     .join("\n");
 
   const existingTagsBlock = ctx.classifierTags.length
@@ -46,7 +54,7 @@ The ticket conversation (inbound messages were originally in the field agent's l
 ${convoBlock}
 
 The operator's resolution summary (what actually fixed it):
-"${ctx.resolutionSummary}"
+"${redactText(ctx.resolutionSummary)}"
 
 Ticket metadata:
 - Category: ${ctx.category}

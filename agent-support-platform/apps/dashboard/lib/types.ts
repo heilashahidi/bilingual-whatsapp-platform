@@ -37,6 +37,11 @@ export interface Agent {
   country: Country;
   preferredLanguage: "ht" | "fr" | "es" | "en";
   connectivityStatus: "online" | "intermittent" | "offline" | "unknown";
+  // SECURITY.md §5.1 — verification status. verifiedAt set & rejectedAt
+  // null → trusted. Both null → pending (quarantined). rejectedAt set →
+  // confirmed scammer/spammer (also quarantined).
+  verifiedAt: string | null;
+  rejectedAt: string | null;
   branch: Branch;
 }
 

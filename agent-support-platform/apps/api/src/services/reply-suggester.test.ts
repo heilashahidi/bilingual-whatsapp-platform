@@ -138,6 +138,38 @@ describe("suggestReplies", () => {
     expect(prompt).toContain("Cap-Haïtien Central");
   });
 
+  it("redacts PII out of the conversation before sending to Claude (SECURITY.md §5.2)", async () => {
+    findUnique.mockResolvedValue(
+      buildTicket({
+        messages: [
+          {
+            direction: "inbound",
+            originalText: "Mwen pa ka konekte",
+            translatedText:
+              "I can't log in — my card is 4111111111111111 and code 484929",
+            createdAt: new Date(Date.now() - 5 * 60_000),
+          },
+        ],
+      })
+    );
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        content: [{ text: JSON.stringify({ suggestions: [] }) }],
+      }),
+    });
+
+    await suggestReplies("ticket-1");
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    const prompt = body.messages[0].content as string;
+    // The raw card number and the OTP must NEVER reach Claude.
+    expect(prompt).not.toContain("4111111111111111");
+    expect(prompt).not.toContain("484929");
+    expect(prompt).toContain("[REDACTED_CARD]");
+    expect(prompt).toContain("[REDACTED_OTP]");
+  });
+
   it("strips markdown code fences before parsing", async () => {
     findUnique.mockResolvedValue(buildTicket());
     fetchMock.mockResolvedValue({

@@ -28,6 +28,11 @@ async function main() {
 
   console.log(`✓ Created ${branches.length} branches`);
 
+  // Seeded agents are pre-verified (SECURITY.md §5.1) so local dev
+  // exercises the trusted-flow paths by default. To test the
+  // quarantine flow, send an inbound from a number not in this list —
+  // it'll auto-register as pending.
+  const seedVerifiedAt = new Date();
   const agents = await Promise.all([
     prisma.agent.create({
       data: {
@@ -36,6 +41,7 @@ async function main() {
         country: "HT",
         preferredLanguage: "ht",
         branchId: branches[0].id,
+        verifiedAt: seedVerifiedAt,
       },
     }),
     prisma.agent.create({
@@ -45,6 +51,7 @@ async function main() {
         country: "HT",
         preferredLanguage: "ht",
         branchId: branches[1].id,
+        verifiedAt: seedVerifiedAt,
       },
     }),
     prisma.agent.create({
@@ -54,6 +61,7 @@ async function main() {
         country: "DO",
         preferredLanguage: "es",
         branchId: branches[2].id,
+        verifiedAt: seedVerifiedAt,
       },
     }),
     prisma.agent.create({
@@ -63,6 +71,7 @@ async function main() {
         country: "CD",
         preferredLanguage: "fr",
         branchId: branches[4].id,
+        verifiedAt: seedVerifiedAt,
       },
     }),
   ]);

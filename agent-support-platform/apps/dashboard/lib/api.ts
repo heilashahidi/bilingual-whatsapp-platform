@@ -232,13 +232,20 @@ export async function fetchUsers(token?: string): Promise<InternalUser[]> {
   return data.users;
 }
 
+export type AgentVerificationFilter = "verified" | "pending" | "rejected" | "all";
+
 export async function fetchAgents(
-  params: { q?: string; limit?: number } = {},
+  params: {
+    q?: string;
+    limit?: number;
+    verification?: AgentVerificationFilter;
+  } = {},
   token?: string
 ): Promise<Agent[]> {
   const search = new URLSearchParams();
   if (params.q) search.set("q", params.q);
   if (params.limit) search.set("limit", String(params.limit));
+  if (params.verification) search.set("verification", params.verification);
 
   const res = await fetch(
     `${API_URL}/api/agents${search.toString() ? `?${search}` : ""}`,
@@ -250,6 +257,28 @@ export async function fetchAgents(
   if (!res.ok) throw new Error(`Failed to search agents: ${res.status}`);
   const data = (await res.json()) as { agents: Agent[] };
   return data.agents;
+}
+
+export async function verifyAgent(agentId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/agents/${agentId}/verify`, {
+    method: "POST",
+    headers: await authHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `Verify failed: ${res.status}`);
+  }
+}
+
+export async function rejectAgent(agentId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/agents/${agentId}/reject`, {
+    method: "POST",
+    headers: await authHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `Reject failed: ${res.status}`);
+  }
 }
 
 export interface OutreachTicketInput {

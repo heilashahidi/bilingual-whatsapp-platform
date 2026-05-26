@@ -17,6 +17,14 @@ const ACTION_VERB: Record<AuditAction, string> = {
   // even though they're rare in a single ticket's activity feed.
   clustered: "clustered into an incident",
   incident_formed: "formed a new incident",
+  // Sender verification (SECURITY.md §5.1) — system actions when an
+  // unverified number sends, plus admin promote/reject decisions.
+  quarantined: "quarantined — sender not verified",
+  agent_verified: "verified the sender",
+  agent_rejected: "rejected the sender as a scammer/spammer",
+  // PII redaction (SECURITY.md §5.2). Action fires when sensitive
+  // values were stripped from a message before being sent to Claude.
+  redacted_for_llm: "redacted PII before LLM call",
 };
 
 function actorLabel(event: AuditEvent): string {
