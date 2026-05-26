@@ -31,6 +31,7 @@ Meet agents where they already are (WhatsApp) and give the US team a purpose-bui
 - **Real-time updates** via Socket.IO — `ticket:changed` event on every mutation drives nav badges, open drawers, and conversation lists without refresh
 - **Haiti / DRC connectivity awareness** — extended SLAs, delivery tracking, per-country message length caps for 2G networks. Country labels render as `HT` / `DO` / `CD` monospace chips (no flag emojis).
 - **SLA tracking** with country-specific thresholds and per-ticket SLA rings
+- **Sender verification + PII redaction at the LLM trust boundary** — unknown WhatsApp numbers are auto-quarantined (no Slack ping, no auto-reply, no clustering) until an admin promotes them via the `/agents` dashboard; every Claude call is routed through a PII redactor that strips Luhn-valid card numbers, multilingual OTPs, phone numbers, emails, and account-number-shaped digit runs. Threat model + control inventory in [SECURITY.md](agent-support-platform/docs/SECURITY.md).
 
 ## Quick Start
 
@@ -89,6 +90,7 @@ See [docs/CONTRIBUTING.md](agent-support-platform/docs/CONTRIBUTING.md) for the 
 | [AI Usage](agent-support-platform/docs/AI_USAGE.md) | All five Claude integrations with prompts + data flow |
 | [Translation](agent-support-platform/docs/TRANSLATION.md) | Translation pipeline, glossary management, language support |
 | [Connectivity](agent-support-platform/docs/CONNECTIVITY.md) | Haiti/DRC latency handling and resilience design |
+| [Security](agent-support-platform/docs/SECURITY.md) | Threat model, data classification, control inventory, compliance posture, incident response |
 | [Runbooks](agent-support-platform/docs/RUNBOOKS.md) | Operational playbooks for incidents and common issues |
 | [Contributing](agent-support-platform/docs/CONTRIBUTING.md) | Dev setup, coding standards, PR process |
 | [Changelog](agent-support-platform/CHANGELOG.md) | Version history |
@@ -125,10 +127,13 @@ cd agent-support-platform/apps/api
 npx vitest run --config vitest.config.ts
 ```
 
-156 tests across 16 files covering: the inbound message pipeline, all five
+193 tests across 18 files covering: the inbound message pipeline, all five
 Claude integrations, incident clustering, KB scoring, webhook signature
-validation, role guards, HTTP-level route contracts, and the Prisma
-retry helper (Neon auto-suspend recovery).
+validation, role guards, HTTP-level route contracts, the Prisma retry
+helper (Neon auto-suspend recovery), the PII redactor (cards / OTPs /
+phones / emails / account-shaped digit runs across English / Haitian
+Creole / French / Spanish), and the sender-verification routes
+(`POST /api/agents/:id/verify` and `/reject`).
 
 ## License
 

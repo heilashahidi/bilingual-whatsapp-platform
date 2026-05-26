@@ -548,14 +548,52 @@
       <div class="card">
         <div class="pill">Privacy</div>
         <h4>What never leaves our servers</h4>
-        <p>Phone numbers, WhatsApp message IDs, internal user emails, auth tokens, Twilio credentials — none of these ever get sent to Anthropic. Only the message content and a small amount of context.</p>
+        <p>Every Claude call goes through a PII redactor first (see section 06). Auth tokens, Twilio credentials, WhatsApp message IDs, and internal user emails never reach Anthropic — and the message content itself is scrubbed of card numbers, OTPs, account-shaped digit runs, and unrelated phone numbers before the prompt is built.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Security / compliance ─────────────────────── -->
+  <section>
+    <h2><span class="num">06</span>Guarding the trust boundaries</h2>
+    <p class="subhead">
+      Agents send messages about money. Scammers send messages too. The platform treats both as facts, not edge cases.
+    </p>
+
+    <p>
+      WhatsApp is the single most-abused channel for financial scams in the regions we operate in.
+      Anyone can register a number and send a message to our inbound line. Anyone can paste a customer's
+      card details into a chat in a panic. Both of those are everyday occurrences, and the platform has
+      two purpose-built defenses for them.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <div class="pill">Defense 1</div>
+        <h4>Sender verification</h4>
+        <p>When an unknown number messages our inbound line, we still create a ticket — but the agent is <b>quarantined</b>. No Slack ping to ops, no auto-reply, no clustering with real incidents, no knowledge-base suggestions. The ticket lands in a separate <code>/agents?verification=pending</code> queue with a nav badge so an admin sees the count. One click promotes the number into the normal flow; one click marks it as a confirmed scammer and the rejection sticks.</p>
+      </div>
+      <div class="card">
+        <div class="pill">Defense 2</div>
+        <h4>PII redaction at the LLM boundary</h4>
+        <p>Every one of the five Claude calls is routed through a redactor first. Luhn-valid card numbers, OTPs anchored to multilingual keywords (<code>code</code>, <code>kòd</code>, <code>código</code>, <code>mot de passe</code>), bare 8–20 digit account-shaped runs, third-party phone numbers, and email addresses all become <code>[REDACTED_*]</code> placeholders before the prompt leaves the platform. The original text stays in our database with encryption at rest; Anthropic never sees it.</p>
+      </div>
+      <div class="card">
+        <div class="pill">Audit</div>
+        <h4>Append-only event log</h4>
+        <p>Every ticket mutation, quarantine event, sender verification, and PII redaction (counts only — never the values themselves) lands in the <code>Event</code> table. Compliance gets a queryable trail: "how often do agents paste sensitive data?", "who promoted this number?", "what changed on this ticket and when?".</p>
+      </div>
+      <div class="card">
+        <div class="pill">Threat model</div>
+        <h4>One document, ten scenarios</h4>
+        <p><a href="https://github.com/heilashahidi/bilingual-whatsapp-platform/blob/main/agent-support-platform/docs/SECURITY.md">SECURITY.md</a> is the source of truth — data classification (P0 restricted financial down to P4 public), ten numbered threat scenarios with status, the full control inventory, the open gaps with implementation notes, the compliance posture (SOC 2 anchor, PCI out-of-scope by design, BRH / Superintendencia / BCC notes), and an incident-response playbook. Every PR that touches messages, LLM calls, or auth gets reviewed against the checklist at the bottom.</p>
       </div>
     </div>
   </section>
 
   <!-- ── Connectivity story ────────────────────────── -->
   <section>
-    <h2><span class="num">06</span>Built for the connection agents actually have</h2>
+    <h2><span class="num">07</span>Built for the connection agents actually have</h2>
     <p class="subhead">
       Haiti has some of the slowest internet in the Western Hemisphere. The DRC isn't much better.
       That reality shaped the architecture — it's not an afterthought.
@@ -591,7 +629,7 @@
 
   <!-- ── Outbound queue ──────────────────────────── -->
   <section>
-    <h2><span class="num">07</span>How replies actually get sent</h2>
+    <h2><span class="num">08</span>How replies actually get sent</h2>
     <p class="subhead">The newest piece of the platform — the operator never waits for Twilio.</p>
 
     <p>
@@ -634,7 +672,7 @@
 
   <!-- ── Performance ──────────────────────────────── -->
   <section>
-    <h2><span class="num">08</span>How fast it actually is</h2>
+    <h2><span class="num">09</span>How fast it actually is</h2>
     <p class="subhead">Measured against the live deployment on Railway, not theoretical.</p>
 
     <div class="stats">
@@ -667,8 +705,8 @@
         <div class="lbl">Median translation confidence on Haitian Creole (1.0 = perfect)</div>
       </div>
       <div class="stat">
-        <div class="num">156</div>
-        <div class="lbl">Automated tests across 16 files</div>
+        <div class="num">193</div>
+        <div class="lbl">Automated tests across 18 files</div>
       </div>
     </div>
 
@@ -683,7 +721,7 @@
 
   <!-- ── Tech stack ──────────────────────────────── -->
   <section>
-    <h2><span class="num">09</span>The technology, briefly</h2>
+    <h2><span class="num">10</span>The technology, briefly</h2>
     <p class="subhead">What it's built with, and the one-line reason for each pick.</p>
 
     <table class="tech">
@@ -737,7 +775,7 @@
 
   <!-- ── Docs map ─────────────────────────────────── -->
   <section>
-    <h2><span class="num">10</span>If you want to go deeper</h2>
+    <h2><span class="num">11</span>If you want to go deeper</h2>
     <p class="subhead">The full documentation set, in suggested reading order.</p>
 
     <div class="docs">
@@ -749,6 +787,7 @@
       <div class="doc"><div class="name">AI_USAGE.md</div><div class="desc">All five Claude integrations — prompts, inputs, what gets sent.</div></div>
       <div class="doc"><div class="name">TRANSLATION.md</div><div class="desc">The translation pipeline, supported languages, glossary plan.</div></div>
       <div class="doc"><div class="name">CONNECTIVITY.md</div><div class="desc">Haiti / DRC resilience — the design decisions for unreliable networks.</div></div>
+      <div class="doc"><div class="name">SECURITY.md</div><div class="desc">Threat model, data classification, controls (in place + open), compliance posture, incident response.</div></div>
       <div class="doc"><div class="name">PERFORMANCE.md</div><div class="desc">Measured benchmarks against the six PRD metrics.</div></div>
       <div class="doc"><div class="name">DEPLOYMENT.md</div><div class="desc">Local setup and the production setup on Railway + Neon + Upstash.</div></div>
       <div class="doc"><div class="name">RUNBOOKS.md</div><div class="desc">Operational playbooks for incidents and common issues.</div></div>
@@ -758,8 +797,8 @@
   </section>
 
   <footer>
-    <div>Nclusion Field Agent Support · v0.3.0+</div>
-    <div>Generated from 14 markdown files in this repo · Refreshed 2026-05-23</div>
+    <div>Nclusion Field Agent Support · v0.4.1+</div>
+    <div>Generated from 15 markdown files in this repo · Refreshed 2026-05-26</div>
   </footer>
 
 </main>

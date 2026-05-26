@@ -338,13 +338,46 @@ Bot performance metrics: resolution rate, deflection rate by issue type, escalat
 
 ### GET /api/agents
 
-List agents with search and filtering.
+List agents with search, filtering, and verification-state filtering (SECURITY.md §5.1).
 
-**Query parameters:** `country`, `search` (name or phone), `limit`, `offset`
+**Query parameters:**
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `country` | string | — | Filter: `HT`, `DO`, `CD` |
+| `q` / `search` | string | — | Fuzzy match across name, phone, and branch name |
+| `verification` | string | `verified` | One of `verified`, `pending`, `rejected`, `all`. Defaults to `verified` so the regular agent list excludes quarantined numbers — pass `pending` to see numbers awaiting admin review, `rejected` to see confirmed scammers/spammers, `all` to see every known number. |
+| `limit` | number | 50 | |
+| `offset` | number | 0 | |
 
 ### GET /api/agents/:id
 
-Agent profile with ticket history, bot conversation history, and connectivity status.
+Agent profile with ticket history, bot conversation history, connectivity status, and the `verifiedAt` / `rejectedAt` timestamps that determine verification state.
+
+### POST /api/agents/:id/verify
+
+Promote a quarantined agent into the normal flow. Restricted to `admin` and `operations`. Sets `verifiedAt = now()` and clears `rejectedAt`. Emits a per-ticket `agent_verified` audit event for every existing ticket the agent already has, so the activity timeline on each of those tickets reflects the change.
+
+**Request body:** none.
+
+**Response:**
+```json
+{
+  "agent": {
+    "id": "uuid",
+    "verifiedAt": "2026-05-26T12:00:00Z",
+    "rejectedAt": null
+  }
+}
+```
+
+### POST /api/agents/:id/reject
+
+Mark a number as a confirmed scammer/spammer. Restricted to `admin`. Sets `rejectedAt = now()` and clears `verifiedAt`. Future inbound messages remain quarantined (skip Slack notify, auto-intake reply, KB suggestions, and incident clustering — see [SECURITY.md §5.1](SECURITY.md#51-inbound-sender-verification-t1-t9)). Emits a per-ticket `agent_rejected` audit event.
+
+We do not hard-delete the row because `Message.senderId` and `Ticket.agentId` foreign-key to it; the `rejectedAt` flag is what the inbound pipeline checks.
+
+**Request body:** none.
 
 ## Users
 

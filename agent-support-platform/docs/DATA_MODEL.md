@@ -48,11 +48,14 @@ Field agents who communicate via WhatsApp.
 | branchId | FK → Branch | Which branch this agent operates |
 | connectivityStatus | Enum | `online`, `intermittent`, `offline`, `unknown` — derived from delivery receipts |
 | lastSeenAt | DateTime? | Last time a message was received from this agent |
+| verifiedAt | DateTime? | Sender verification (SECURITY.md §5.1). Set by an admin/operations user via `POST /api/agents/:id/verify` to promote the agent out of quarantine. Existing rows are backfilled to `createdAt` by migration `20260526120000_add_agent_verification` |
+| rejectedAt | DateTime? | Set by an admin via `POST /api/agents/:id/reject` to mark the number as a confirmed scammer/spammer. Mutually exclusive with `verifiedAt` — promoting clears reject and vice versa |
 
 **Key behaviors:**
-- Auto-created on first inbound message if not already registered.
+- Auto-created on first inbound message if not already registered, but **quarantined by default** (`verifiedAt = null`). Their tickets are persisted for admin review but the inbound pipeline skips Slack notify, auto-intake reply, KB suggestions, and incident clustering until an admin promotes them. See [SECURITY.md §5.1](SECURITY.md#51-inbound-sender-verification-t1-t9).
 - Country is derived from phone number prefix (+509 = HT, +243 = CD, +1-809/829/849 = DO).
 - `connectivityStatus` is updated when messages arrive (→ online) and when delivery receipts are delayed or missing (→ intermittent/offline).
+- Verification state derives from the two timestamps: `verifiedAt IS NOT NULL AND rejectedAt IS NULL` → verified; both null → pending; `rejectedAt IS NOT NULL` → rejected.
 
 ### Ticket
 

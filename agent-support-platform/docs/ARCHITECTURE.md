@@ -821,14 +821,28 @@ The analytics view includes a "coverage gap" analysis: it looks at the most comm
 
 ### 4.3 Security
 
-- All data encrypted at rest (database, object storage) and in transit (TLS everywhere).
-- WhatsApp webhook signature verification on every request.
-- Dashboard authentication via SSO (Google Workspace / Okta) with RBAC.
-- API authentication via JWT with short-lived tokens.
-- PII handling: agent phone numbers and names are PII. Access is logged. Consider field-level encryption for phone numbers at rest.
-- Rate limiting on all public-facing endpoints.
-- Bot conversation logs are stored with the same security as ticket data.
-- Audit log for all ticket state changes, incident actions, knowledge base edits, and data access.
+This is a summary. The authoritative document is [docs/SECURITY.md](SECURITY.md) — threat model, data classification, control inventory, compliance posture, incident response, and reviewer checklist.
+
+**Controls currently in place:**
+
+- All data encrypted at rest (Neon Postgres, Upstash Redis) and in transit (TLS everywhere on Railway).
+- Twilio webhook signature verification on `/webhooks/whatsapp` and `/webhooks/whatsapp/status`. Failed signature → reject before pipeline entry.
+- Dashboard authentication via NextAuth + Google OAuth; API verifies a NextAuth-issued JWT (HS256, shared `NEXTAUTH_SECRET`) on every `/api/*` route.
+- Role-based gates via `requireRole(...)` on mutating routes (admin / engineering / operations / support).
+- **Sender verification (SECURITY.md §5.1).** Unknown inbound numbers auto-create an `Agent` row but stay quarantined (`verifiedAt = null`). Quarantined tickets are persisted but the pipeline skips Slack notify, auto-intake reply, KB suggestions, and incident clustering until an admin promotes them via `POST /api/agents/:id/verify`. Quarantine traffic surfaces in a dedicated `#agent-security` Slack channel (`SLACK_QUARANTINE_WEBHOOK_URL`) and via the `/agents?verification=pending` dashboard view.
+- **PII redaction at the LLM trust boundary (SECURITY.md §5.2).** Every Anthropic call (translation, classification, reply suggester, KB drafter, incident summarizer) is routed through `pii-redactor.ts` first. Luhn-valid card numbers, multilingual OTPs, E.164 phone numbers (excluding the agent's own), email addresses, and bare 8–20 digit account-number-shaped runs are replaced with `[REDACTED_*]` placeholders before the prompt leaves the platform. Original text stays in `Message.originalText` (covered by encryption-at-rest); `Message.translatedText` contains the placeholders.
+- Audit log (`Event` table) for ticket state changes, incident lifecycle transitions, sender verification events (`agent_verified` / `agent_rejected`), quarantine events (`quarantined`), and PII redactions (`redacted_for_llm`, counts only — never the values themselves).
+- `senderId` on outbound messages is derived from the authenticated session — body values are ignored.
+
+**Known gaps** (tracked in SECURITY.md §5 with implementation notes):
+- Read-audit logging — `Event` captures writes but not reads.
+- HS256 + shared `NEXTAUTH_SECRET` → planned migration to RS256 + JWKS before any SOC 2 audit window.
+- Secrets currently live in Railway env vars → migration to a secrets manager planned.
+- KB approval flow lacks a forced PII-scrub checklist.
+- Operator outbound rate limiting and per-day caps not yet enforced.
+- Quarterly backup-restore drill not yet exercised.
+
+**Compliance posture:** working toward SOC 2 Type II as the operational anchor; PCI DSS scoped out by design through the PII redaction layer; local financial-regulation alignment (Haiti BRH, DR Superintendencia de Bancos, DRC BCC) needs legal counsel before pilot expansion.
 
 ### 4.4 Haiti & DRC Connectivity Resilience
 
